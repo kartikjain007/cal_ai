@@ -1,0 +1,97 @@
+// prisma/schema.prisma
+// Define your database models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Example models
+
+model User {
+  id                  Int       @id @default(autoincrement())
+  email                String    @unique
+  passwordHash        String    @map("password_hash")
+  name                String?
+  role                String    @default("user")
+  dailyCalories       Int       @default(2000) @map("daily_calories")
+  dailyProtein        Int       @default(150) @map("daily_protein")
+  dailyCarbs          Int       @default(250) @map("daily_carbs")
+  dailyFats          Int       @default(65) @map("daily_fats")
+  age                 Int?
+  heightCm            Float?    @map("height_cm")
+  currentWeightKg    Float?    @map("current_weight_kg")
+  targetWeightKg    Float?    @map("target_weight_kg")
+  goalType           String?
+  weeklyPaceKg      Float?    @map("weekly_pace_kg")
+  targetDate        String?   @map("target_date")
+  dietType           String?   @map("diet_type")
+  onboardingCompleted Boolean @default(false) @map("onboarding_completed")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime? @map("updated_at") @db.Timestamptz
+
+  meals       Meal[]
+  waterLogs   WaterLog[]
+  exercises  Exercise[]
+
+  @@map("users")
+}
+
+model Meal {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @map("user_id")
+  foodName        String?   @map("food_name")
+  calories       Int?
+  protein        Float?
+  carbs          Float?
+  fats           Float?
+  fiber          Float     @default(0)
+  healthScore    Int       @default(5) @map("health_score")
+  quantityGrams  Int       @default(100) @map("quantity_grams")
+  ingredients    Json      @default("[]")
+  mealDescription String?  @map("meal_description")
+  mealType       String    @default("snack") @map("meal_type")
+  imageBase64    String?   @map("image_base64")
+  loggedAt       DateTime?  @map("logged_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([loggedAt])
+  @@map("meals")
+}
+
+model WaterLog {
+  id        Int      @id @default(autoincrement())
+  userId   Int      @map("user_id")
+  amountMl Int      @map("amount_ml")
+  loggedAt DateTime @map("logged_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([loggedAt])
+  @@map("water_logs")
+}
+
+model Exercise {
+  id              Int      @id @default(autoincrement())
+  userId          Int     @map("user_id")
+  exerciseName    String  @map("exercise_name")
+  durationMinutes Int     @map("duration_minutes")
+  caloriesBurned Int     @map("calories_burned")
+  loggedAt        DateTime @map("logged_at") @db.Timestamptz
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([loggedAt])
+  @@map("exercises")
+}
