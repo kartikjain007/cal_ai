@@ -18,20 +18,25 @@ export async function analyzeMeal(req: Request, res: Response) {
   const { image_base64, meal_type } = parseResult.data;
 
   try {
-    const prompt = `You are a nutrition analysis AI. When given a food image, analyze it and return ONLY a valid JSON object (no markdown, no explanation) with these fields:
+    const prompt = `You are a nutrition analysis AI. Given a food image, return ONLY a valid JSON
+object (no markdown fences) with these fields:
 {
+  "is_food": boolean,
+  "confidence": number,            // 0.0–1.0, your confidence in this estimate
   "food_name": "Name of the dish/food",
   "calories": number,
-  "protein": number (grams),
-  "carbs": number (grams),
-  "fats": number (grams),
-  "fiber": number (grams),
-  "health_score": number (1-10),
-  "quantity_grams": number (estimated weight in grams),
-  "ingredients": ["ingredient1", "ingredient2"],
-  "meal_description": "Brief description of the meal"
+  "protein": number, "carbs": number, "fats": number, "fiber": number,
+  "health_score": number,          // 1–10
+  "health_score_rationale": "1–2 sentences explaining HOW the health score was derived",
+  "quantity_grams": number,
+  "ingredients": ["..."],
+  "meal_description": "Brief description",
+  "assumptions": "Any portion/ingredient assumptions made"
 }
-Be as accurate as possible with portion estimation. Always return valid JSON only.`;
+Base health_score on nutrient density, processing level, sugar/sodium, and portion.
+Always explain the health_score in health_score_rationale.`;
+
+// Be as accurate as possible with portion estimation. Always return valid JSON only.`;
 
     let mimeType = "image/jpeg";
     let imageData = image_base64.trim();
@@ -87,6 +92,18 @@ Be as accurate as possible with portion estimation. Always return valid JSON onl
 
     try {
       const nutritionData = JSON.parse(cleanText) as Record<string, unknown>;
+            const isFood = nutritionData.is_food !== false;
+      const confidence = Number(nutritionData.confidence ?? 1);
+      if (!isFood || confidence < 0.4) {
+        logger.warn(`Meal analysis refused: is_food=${isFood} confidence=${confidence}`);
+        return res.status(422).json({
+          detail: "Could not confidently identify a meal in this image. " +
+                  "Please retake the photo or enter the meal manually.",
+          needs_manual_entry: true,
+          confidence,
+        });
+      }
+
       return res.json({
         food_name: nutritionData.food_name || "Unknown Food",
         calories: nutritionData.calories || 0,
@@ -99,6 +116,11 @@ Be as accurate as possible with portion estimation. Always return valid JSON onl
         ingredients: nutritionData.ingredients || [],
         meal_description: nutritionData.meal_description || "",
         meal_type,
+        health_score: nutritionData.health_score || 5,
+        health_score_rationale: nutritionData.health_score_rationale || "",   // ADD
+        assumptions: nutritionData.assumptions || "",                          // ADD
+        confidence: Number(nutritionData.confidence ?? 1),                     // ADD
+
       });
     } catch (e) {
       logger.error(`Failed to parse Gemini response: ${e}`);
