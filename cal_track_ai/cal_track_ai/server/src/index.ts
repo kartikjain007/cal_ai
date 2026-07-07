@@ -18,9 +18,27 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
+// app.get("/", (_req: Request, res: Response) => {
+//   res.json({ message: "Welcome to the CalTrack AI API" });
+// });
+
+// index.ts
 app.get("/", (_req: Request, res: Response) => {
-  res.json({ message: "Welcome to the CalTrack AI API" });
+  res.json({
+    message: "Welcome to the CalTrack AI API",
+    intended_purpose:
+      "AI-assisted nutrition estimation and meal logging for personal dietary tracking.",
+    intended_use:
+      "Informational self-tracking of estimated calorie/macro intake. Not a medical device and not intended to diagnose, treat, or manage any health condition (e.g. diabetes, eating disorders).",
+    limitations: [
+      "Nutrition values are AI-generated estimates (Gemini) from a photo/description, not lab-measured — expect variance from stated goals.",
+      "Requires clear meal descriptions/images; accuracy degrades with ambiguous or incomplete input.",
+      "Not validated for clinical or regulatory nutrition-reporting use.",
+    ],
+    version: "1.0.0",
+  });
 });
+
 
 // Register routes synchronously so they are available immediately in Vercel Serverless environment
 registerAuthRoutes(app);
