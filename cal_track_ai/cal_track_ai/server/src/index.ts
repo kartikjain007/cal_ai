@@ -18,6 +18,55 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
+// index.ts — add near the top, before routes are registered
+import { randomUUID } from "crypto";
+
+declare global {
+  namespace Express {
+    interface Request {
+      requestId?: string;
+    }
+  }
+}
+
+app.use((req: Request, res: Response, next) => {
+  req.requestId = randomUUID();
+  res.setHeader("X-Request-Id", req.requestId);
+  next();
+});
+
+// routes/meals.ts — inside getTodaySummary, replace the final return
+const requestId = req.requestId ?? randomUUID();
+const generatedAt = new Date().toISOString();
+
+logger.info(
+  `audit request_id=${requestId} user_id=${userId} action=today_summary_view date=${target.toISOString()} timestamp=${generatedAt}`
+);
+
+return res.json({
+  total_calories: totals.calories || 0,
+  total_protein: totals.protein || 0,
+  total_carbs: totals.carbs || 0,
+  total_fats: totals.fats || 0,
+  meal_count: meals.length,
+  goal_calories: req.user!.dailyCalories,
+  goal_protein: req.user!.dailyProtein,
+  goal_carbs: req.user!.dailyCarbs,
+  goal_fats: req.user!.dailyFats,
+  metadata: {
+    request_id: requestId,
+    generated_at: generatedAt,
+  },
+  accuracy: {
+    source: "ai_estimated",
+    method: "gemini_nutrition_analysis_per_meal",
+    confidence_level: "approximate",
+    disclaimer:
+      "Totals are aggregated from AI-estimated per-meal values, not lab-measured; individual meal estimates may deviate ±15-20% from actual nutrient content.",
+  },
+});
+
+
 // app.get("/", (_req: Request, res: Response) => {
 //   res.json({ message: "Welcome to the CalTrack AI API" });
 // });
