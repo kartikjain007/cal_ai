@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../utils/prisma";
+import { logger } from "../utils/config";
 import {
   hashPassword,
   verifyPassword,
@@ -107,7 +108,10 @@ export async function login(req: Request, res: Response) {
 }
 
 export function getMe(req: Request, res: Response) {
-  return res.json(buildUserPayload(req.user!));
+  logger.info(
+    `audit request_id=${req.requestId} user_id=${req.user!.id} action=auth_me_view timestamp=${new Date().toISOString()}`
+  );
+  return res.json(buildUserPayload(req.user!, undefined, req.requestId));
 }
 
 export function logout(_req: Request, res: Response) {
