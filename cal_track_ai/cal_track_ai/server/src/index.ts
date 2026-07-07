@@ -67,11 +67,6 @@ return res.json({
 });
 
 
-// app.get("/", (_req: Request, res: Response) => {
-//   res.json({ message: "Welcome to the CalTrack AI API" });
-// });
-
-// index.ts
 app.get("/", (_req: Request, res: Response) => {
   res.json({
     message: "Welcome to the CalTrack AI API",
