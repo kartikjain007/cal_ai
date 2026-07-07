@@ -116,7 +116,6 @@ Always explain the health_score in health_score_rationale.`;
         ingredients: nutritionData.ingredients || [],
         meal_description: nutritionData.meal_description || "",
         meal_type,
-        health_score: nutritionData.health_score || 5,
         health_score_rationale: nutritionData.health_score_rationale || "",   // ADD
         assumptions: nutritionData.assumptions || "",                          // ADD
         confidence: Number(nutritionData.confidence ?? 1),                     // ADD
