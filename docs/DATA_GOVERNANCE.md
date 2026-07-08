@@ -81,6 +81,29 @@ seemingly-trustworthy total. To avoid that, the response includes a
   suspect rather than presented as equally reliable to a clean total.
 - `confidence_level: "approximate"` and a disclaimer stating the total is
   aggregated from AI estimates, not lab-measured values.
+- `accuracy_metrics` — a formal, computed accuracy signal rather than a
+  fixed label (Art. 15.1). Built from the `confidence` score Gemini returns
+  with each meal estimate (`server/src/routes/meals.ts`, `analyzeMeal`),
+  stored per-meal (`Meal.confidence`), and aggregated across the meals
+  contributing to that day's total:
+  - `avg_confidence` / `min_confidence` — mean and minimum of the
+    contributing meals' model-reported confidence (0.0–1.0), rounded to 3
+    decimals.
+  - `confidence_threshold` — the same `CONFIDENCE_THRESHOLD` (0.5) used by
+    `validateMealEstimate()` to flag low-confidence meals, exposed so a
+    client can reproduce the `meals_below_confidence_threshold` count.
+  - `meals_below_confidence_threshold` / `meals_scored` /
+    `meals_missing_confidence` — how many contributing meals fell below
+    threshold, had a confidence score at all, and (for meals saved before
+    `confidence` was persisted, or via a client that omitted it) didn't.
+  - `basis` — states explicitly that this is the model's *self-reported*
+    confidence, not an error rate measured against a lab-verified ground
+    truth: this system has no certified nutrition dataset to validate
+    estimates against (see "Data provenance" above), so `avg_confidence` is
+    a monitorable proxy signal, not a precision/recall or MAE-style
+    accuracy metric. This scoping is stated inline rather than left
+    implicit, so the metric isn't mistaken for a validated accuracy
+    guarantee.
 - `metadata.request_id` / `generated_at` for traceability — each summary
   response can be tied back to a specific request and point in time if a
   user disputes a total later.
@@ -144,6 +167,12 @@ durable reference that field links back to.
   contributing meal failed a plausibility check (see "Output data quality
   controls" above). Review the meals in `flagged_meal_ids` via `GET
   /api/meals/:mealId` before treating the total as reliable.
+- **How to read `data_quality.accuracy_metrics`**: `avg_confidence` /
+  `min_confidence` summarize the AI's own confidence in the meals behind
+  this total, not a measured error rate — see `accuracy_metrics.basis` in
+  the response and "Aggregate/derived data quality controls" above. A low
+  `avg_confidence` or nonzero `meals_below_confidence_threshold` is a
+  prompt to review the flagged meals, not a quantified margin of error.
 - **What action to take on a suspect total**: correct the underlying meal via
   `PUT /api/meals/:mealId` — there is no automated correction, a human must
   review and edit. The total updates on the next request once corrected.
