@@ -105,4 +105,57 @@ export const exerciseLogSchema = z.object({
   logged_at: z.string().optional(),
 });
 
+export const CONFIDENCE_THRESHOLD = 0.5;
+
+// Rough plausibility bounds — catches obviously broken model output
+// before it's trusted as fact (Art. 10 output data quality control).
+const MAX_CALORIES_PER_GRAM = 9; // pure fat is ~9 kcal/g, ceiling for a whole dish
+const MACRO_KCAL_TOLERANCE = 0.35; // allow 35% slack vs stated calories
+
+interface MealEstimate {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  fiber?: number;
+  quantityGrams: number;
+  confidence?: number;
+}
+
+export interface ValidationResult {
+  needsReview: boolean;
+  reasons: string[];
+}
+
+export function validateMealEstimate(estimate: MealEstimate): ValidationResult {
+  const reasons: string[] = [];
+
+  if (estimate.confidence !== undefined && estimate.confidence < CONFIDENCE_THRESHOLD) {
+    reasons.push(`low_confidence:${estimate.confidence}`);
+  }
+
+  if (estimate.calories < 0 || estimate.protein < 0 || estimate.carbs < 0 || estimate.fats < 0) {
+    reasons.push("negative_value");
+  }
+
+  if (estimate.quantityGrams > 0) {
+    const caloriesPerGram = estimate.calories / estimate.quantityGrams;
+    if (caloriesPerGram > MAX_CALORIES_PER_GRAM) {
+      reasons.push(`implausible_density:${caloriesPerGram.toFixed(2)}`);
+    }
+  }
+
+  const macroCalories =
+    estimate.protein * 4 + estimate.carbs * 4 + estimate.fats * 9;
+  if (estimate.calories > 0) {
+    const delta = Math.abs(macroCalories - estimate.calories) / estimate.calories;
+    if (delta > MACRO_KCAL_TOLERANCE) {
+      reasons.push(`macro_mismatch:${(delta * 100).toFixed(0)}%`);
+    }
+  }
+
+  return { needsReview: reasons.length > 0, reasons };
+}
+
+
 export type ExerciseLogRequest = z.infer<typeof exerciseLogSchema>;
