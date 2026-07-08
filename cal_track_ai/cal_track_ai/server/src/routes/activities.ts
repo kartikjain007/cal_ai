@@ -1,7 +1,14 @@
 import { Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { prisma } from "../utils/prisma";
 import { authMiddleware } from "../middleware/auth";
-import { waterLogSchema, exerciseLogSchema, MAX_DAILY_WATER_ML } from "../utils/validation";
+import {
+  waterLogSchema,
+  exerciseLogSchema,
+  validateExerciseEstimate,
+  MAX_DAILY_WATER_ML,
+  MAX_DAILY_EXERCISE_MINUTES,
+} from "../utils/validation";
 import { logger } from "../utils/config";
 
 export async function saveWater(req: Request, res: Response) {
@@ -126,8 +133,35 @@ export async function saveExercise(req: Request, res: Response) {
 
   const userId = req.user!.id;
   const { exercise_name, duration_minutes, calories_burned, logged_at } = parseResult.data;
+  const requestId = req.requestId ?? randomUUID();
 
   const loggedAt = logged_at ? new Date(logged_at) : new Date();
+
+  const rateCheck = validateExerciseEstimate({
+    durationMinutes: duration_minutes,
+    caloriesBurned: calories_burned,
+  });
+
+  const dayStart = new Date(loggedAt);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+  const dailyTotal = await prisma.exercise.aggregate({
+    where: { userId, loggedAt: { gte: dayStart, lt: dayEnd } },
+    _sum: { durationMinutes: true },
+  });
+  const projectedDurationTotal = (dailyTotal._sum.durationMinutes ?? 0) + duration_minutes;
+  const dailyAnomaly = projectedDurationTotal > MAX_DAILY_EXERCISE_MINUTES;
+
+  const flaggedForReview = rateCheck.needsReview || dailyAnomaly;
+  if (flaggedForReview) {
+    logger.warn(
+      `exercise_log_flagged request_id=${requestId} user_id=${userId} reasons=${rateCheck.reasons.join(",")}${
+        dailyAnomaly ? `,daily_duration_anomaly:${projectedDurationTotal}` : ""
+      }`
+    );
+  }
 
   const exercise = await prisma.exercise.create({
     data: {
@@ -136,6 +170,7 @@ export async function saveExercise(req: Request, res: Response) {
       durationMinutes: duration_minutes,
       caloriesBurned: calories_burned,
       loggedAt,
+      flaggedForReview,
     },
   });
 
@@ -145,6 +180,7 @@ export async function saveExercise(req: Request, res: Response) {
     duration_minutes: exercise.durationMinutes,
     calories_burned: exercise.caloriesBurned,
     logged_at: exercise.loggedAt.toISOString(),
+    needs_review: exercise.flaggedForReview,
     type: "exercise",
   });
 }
@@ -203,6 +239,17 @@ export async function getExercises(req: Request, res: Response) {
     orderBy: { loggedAt: "desc" },
   });
 
+  // Automatic logging capability (Art. 12.1): every read of exercise data is
+  // tied to the request's identifier so an access can be traced back to a
+  // specific request/user/time later. req.requestId is assigned by the
+  // global middleware in index.ts and echoed on every response as the
+  // X-Request-Id header; this line is the durable, queryable record of it.
+  const requestId = req.requestId ?? randomUUID();
+  const flaggedCount = exercises.filter((r) => r.flaggedForReview).length;
+  logger.info(
+    `exercises_list_view request_id=${requestId} user_id=${userId} count=${exercises.length} flagged_count=${flaggedCount} timestamp=${new Date().toISOString()}`
+  );
+
   return res.json(
     exercises.map((r) => ({
       id: String(r.id),
@@ -210,6 +257,7 @@ export async function getExercises(req: Request, res: Response) {
       duration_minutes: r.durationMinutes,
       calories_burned: r.caloriesBurned,
       logged_at: r.loggedAt.toISOString(),
+      needs_review: r.flaggedForReview,
       type: "exercise",
     }))
   );

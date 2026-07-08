@@ -5,7 +5,7 @@ response (`ai_disclosure.data_governance_doc` in `POST /api/meals/analyze`),
 and applies to logged activity data more broadly. It covers the data that
 flows through meal logging (images submitted for analysis, the AI-estimated
 nutrition values returned, and the meal records users save) and through
-activity logging (water intake entries).
+activity logging (water intake and exercise entries).
 
 ## Data provenance
 
@@ -67,6 +67,36 @@ data-entry errors rather than model hallucination
   minutes in the future (clock-skew tolerance), preventing obviously invalid
   timestamps from entering the dataset.
 
+## Exercise logging data quality controls
+
+Exercise entries are user-entered, not AI-estimated — the same rationale as
+water logging applies (`server/src/utils/validation.ts`, `exerciseLogSchema`
+and `validateExerciseEstimate()`; `server/src/routes/activities.ts`):
+
+- **`exercise_name` bounds** — must be non-empty and under 200 characters,
+  rejected outright at the schema level.
+- **Single-entry duration ceiling** — an individual `duration_minutes` entry
+  above `MAX_SINGLE_EXERCISE_DURATION_MINUTES` (600, i.e. 10 hours) is
+  rejected outright. This catches unit-entry mistakes (e.g. hours typed into
+  a minutes field) before they're stored at all.
+- **Implausible calorie-burn-rate check** — `validateExerciseEstimate()`
+  flags (does not reject) entries where `calories_burned / duration_minutes`
+  exceeds `MAX_CALORIES_BURNED_PER_MINUTE` (25 kcal/min), a rough ceiling
+  even elite endurance athletes rarely sustain. Mirrors the meal estimate's
+  implausible-calorie-density check.
+- **Daily-total anomaly check** — on each save, `saveExercise` sums the
+  day's existing `duration_minutes` and projects the new total. If it
+  exceeds `MAX_DAILY_EXERCISE_MINUTES` (720, i.e. 12 hours), the entry is
+  **not rejected** — it's stored with `flaggedForReview: true`, mirroring
+  the water daily-total check.
+- **Future-dated entries rejected** — same 5-minute clock-skew tolerance as
+  water logging.
+
+Any of the above flag conditions sets `flaggedForReview: true` on the saved
+`Exercise` record, and a `exercise_log_flagged` warning is logged
+server-side with the specific reason(s), so degraded-quality entries are
+auditable rather than silently accepted as fact.
+
 ## Aggregate/derived data quality controls
 
 `GET /api/meals/today-summary` sums per-meal AI estimates into daily totals.
@@ -115,14 +145,63 @@ monitorable server-side, not just visible in the API response.
 ## Persisted quality signal
 
 The `Meal` table stores `confidence` and `flaggedForReview`, and the
-`WaterLog` table stores `flaggedForReview`, alongside every saved record
-(see `prisma/schema.prisma`). This means data quality is not just a
-one-time check at request time — flagged entries remain queryable after the
-fact via `GET /api/meals` and `GET /api/activities/water` (both return
-`needs_review`), so quality regressions (e.g. a Gemini model version change
-producing more implausible estimates, or a client bug causing bad water log
+`WaterLog` and `Exercise` tables each store `flaggedForReview`, alongside
+every saved record (see `prisma/schema.prisma`). This means data quality is
+not just a one-time check at request time — flagged entries remain
+queryable after the fact via `GET /api/meals`, `GET /api/activities/water`,
+and `GET /api/activities/exercises` (all three return `needs_review`), so
+quality regressions (e.g. a Gemini model version change producing more
+implausible estimates, or a client bug causing bad water/exercise log
 submissions) can be detected by monitoring the rate of flagged records over
 time.
+
+## Bias examination
+
+This system's only AI/ML inference step is Gemini's per-meal nutrition
+estimate (`POST /api/meals/analyze`) — there is no in-house trained or
+fine-tuned model, and therefore no training/validation/testing dataset of
+our own whose demographic or representational composition could be audited
+for bias (see "Data provenance" above). Bias examination is scoped
+accordingly rather than left unaddressed:
+
+- **Meal analysis (AI-driven)** — the known limitation that "accuracy may
+  be lower for mixed dishes, unfamiliar cuisines, or partially obscured
+  food" (see "Known limitations" below) is this system's documented
+  evidence of uneven model performance across food/cuisine categories — a
+  bias-relevant signal inherited from the underlying foundation model,
+  which this system does not control or retrain. It is surfaced to users
+  via `ai_disclosure.limitations` on every analysis response, not hidden.
+- **Water and exercise logging (user-entered, no inference)** — `amount_ml`,
+  `duration_minutes`, and `calories_burned` are typed in directly by the
+  user; there is no model prediction step that could encode a training-data
+  bias. The plausibility checks in this document (single-entry ceilings,
+  daily-total anomaly checks) are numeric range checks applied uniformly to
+  every user, not learned from or conditioned on user-specific data, so
+  they carry no differential-treatment risk across users. This is a
+  reasoned "not applicable," not an unexamined gap.
+
+## Automatic logging & traceability
+
+Every request receives a unique `X-Request-Id` response header (assigned by
+global middleware in `server/src/index.ts`, `req.requestId`), so any
+response can be correlated back to a specific request server-side.
+Endpoints that read or write logged activity/meal data additionally emit a
+structured, queryable log line carrying that same identifier:
+
+- `GET /api/activities/exercises` logs `exercises_list_view` with
+  `request_id`, `user_id`, `count`, `flagged_count`, and a timestamp on
+  every read (`server/src/routes/activities.ts`, `getExercises`).
+- `POST /api/activities/exercises` logs `exercise_log_flagged` (with
+  `request_id`) whenever a save trips a plausibility check.
+- `POST /api/activities/water` logs `water_log_daily_total_anomaly`;
+  `POST /api/meals/analyze` and `GET /api/meals/today-summary` log
+  `meal_estimate_flagged` / `today_summary_includes_flagged_meals`
+  respectively, each carrying `request_id` where available.
+
+Together this gives every access and every flagged-quality event a durable,
+correlatable audit trail — sufficient to reconstruct, for a disputed total
+or a support request, which request produced a given response and whether
+it involved a data-quality flag.
 
 ## Human-in-the-loop correction
 
@@ -131,9 +210,10 @@ Users can review and correct any AI-estimated meal value via `PUT
 not re-validated against the model's original estimate — a corrected value
 is treated as ground truth from the person who observed the actual food.
 This is the primary mechanism by which incorrect AI output is caught and
-fixed in this system. Water log entries have no update endpoint — a
-mis-entered value is corrected by deleting (`DELETE
-/api/activities/water/:logId`) and re-submitting.
+fixed in this system. Water and exercise log entries have no update
+endpoint — a mis-entered value is corrected by deleting (`DELETE
+/api/activities/water/:logId` or `DELETE /api/activities/exercises/:logId`)
+and re-submitting.
 
 ## Known limitations
 
@@ -144,6 +224,10 @@ mis-entered value is corrected by deleting (`DELETE
   obscured food.
 - Not cross-checked against a certified nutrition database (e.g. USDA
   FoodData Central).
+- Exercise `calories_burned` is user-entered (often from a third-party
+  fitness tracker or a rough personal estimate), not independently measured
+  by this system — plausibility checks catch obviously implausible values
+  but cannot verify accuracy.
 
 ## Intended use
 

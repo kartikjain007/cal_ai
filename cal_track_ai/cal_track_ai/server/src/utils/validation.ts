@@ -129,12 +129,65 @@ export const waterLogSchema = z.object({
 
 export type WaterLogRequest = z.infer<typeof waterLogSchema>;
 
+// Physiologically implausible above this for a single session — catches
+// unit-entry errors (e.g. hours typed into a minutes field) before storage
+// (Art. 10.1 input data quality control).
+const MAX_SINGLE_EXERCISE_DURATION_MINUTES = 600; // 10 hours
+
+// Rough plausibility ceiling for calorie burn rate — even elite endurance
+// athletes rarely sustain much above this. Used to flag (not reject)
+// implausible calories_burned/duration_minutes combinations.
+const MAX_CALORIES_BURNED_PER_MINUTE = 25;
+
+// Reasonable ceiling for total daily exercise duration before an entry is
+// treated as a data quality anomaly rather than accepted as fact — mirrors
+// MAX_DAILY_WATER_ML.
+export const MAX_DAILY_EXERCISE_MINUTES = 720; // 12 hours
+
 export const exerciseLogSchema = z.object({
-  exercise_name: z.string(),
-  duration_minutes: z.number().gt(0),
+  exercise_name: z.string().min(1, "exercise_name is required").max(200, "exercise_name exceeds maximum length"),
+  duration_minutes: z
+    .number()
+    .gt(0, "duration_minutes must be positive")
+    .max(
+      MAX_SINGLE_EXERCISE_DURATION_MINUTES,
+      `duration_minutes exceeds plausible single-entry maximum of ${MAX_SINGLE_EXERCISE_DURATION_MINUTES} minutes`
+    ),
   calories_burned: z.number().gt(0),
-  logged_at: z.string().optional(),
+  logged_at: z
+    .string()
+    .datetime({ message: "logged_at must be a valid ISO 8601 timestamp" })
+    .optional()
+    .refine(
+      (val) => !val || new Date(val).getTime() <= Date.now() + 5 * 60 * 1000, // 5 min clock-skew tolerance
+      { message: "logged_at cannot be in the future" }
+    ),
 });
+
+export interface ExerciseValidationResult {
+  needsReview: boolean;
+  reasons: string[];
+}
+
+// Flags (does not reject) implausible calorie-burn-rate entries — mirrors
+// validateMealEstimate's plausibility-check-not-rejection pattern so a
+// suspect entry is auditable rather than silently accepted as fact or
+// silently dropped (Art. 10.1).
+export function validateExerciseEstimate(estimate: {
+  durationMinutes: number;
+  caloriesBurned: number;
+}): ExerciseValidationResult {
+  const reasons: string[] = [];
+
+  if (estimate.durationMinutes > 0) {
+    const caloriesPerMinute = estimate.caloriesBurned / estimate.durationMinutes;
+    if (caloriesPerMinute > MAX_CALORIES_BURNED_PER_MINUTE) {
+      reasons.push(`implausible_burn_rate:${caloriesPerMinute.toFixed(1)}`);
+    }
+  }
+
+  return { needsReview: reasons.length > 0, reasons };
+}
 
 export const CONFIDENCE_THRESHOLD = 0.5;
 

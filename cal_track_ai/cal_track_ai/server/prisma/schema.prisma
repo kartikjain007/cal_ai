@@ -91,6 +91,7 @@ model Exercise {
   caloriesBurned Int     @map("calories_burned")
   loggedAt        DateTime @map("logged_at") @db.Timestamptz
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  flaggedForReview Boolean @default(false)
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
