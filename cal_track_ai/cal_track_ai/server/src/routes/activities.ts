@@ -9,18 +9,39 @@ export async function saveWater(req: Request, res: Response) {
     return res.status(400).json({ detail: parseResult.error.errors });
   }
 
+  
+
   const userId = req.user!.id;
   const { amount_ml, logged_at } = parseResult.data;
 
   const loggedAt = logged_at ? new Date(logged_at) : new Date();
 
-  const waterLog = await prisma.waterLog.create({
-    data: {
-      userId,
-      amountMl: amount_ml,
-      loggedAt,
-    },
-  });
+  const dayStart = new Date(loggedAt);
+dayStart.setUTCHours(0, 0, 0, 0);
+const dayEnd = new Date(dayStart);
+dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+const dailyTotal = await prisma.waterLog.aggregate({
+  where: { userId, loggedAt: { gte: dayStart, lt: dayEnd } },
+  _sum: { amountMl: true },
+});
+const projectedTotal = (dailyTotal._sum.amountMl ?? 0) + amount_ml;
+
+if (projectedTotal > MAX_DAILY_WATER_ML) {
+  logger.warn("water_log_daily_total_anomaly", { userId, projectedTotal });
+  // still store the entry (don't silently drop user data), but mark it
+  // for the same review flag pattern used on meal estimates
+}
+
+const log = await prisma.waterLog.create({
+  data: {
+    userId,
+    amountMl: amount_ml,
+    loggedAt: loggedAt,
+    flaggedForReview: projectedTotal > MAX_DAILY_WATER_ML,
+  },
+});
+
 
   return res.json({
     id: String(waterLog.id),
