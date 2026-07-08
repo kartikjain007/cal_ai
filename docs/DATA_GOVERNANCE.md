@@ -197,6 +197,12 @@ structured, queryable log line carrying that same identifier:
   `POST /api/meals/analyze` and `GET /api/meals/today-summary` log
   `meal_estimate_flagged` / `today_summary_includes_flagged_meals`
   respectively, each carrying `request_id` where available.
+- `GET /api/analytics/weekly` logs `analytics_weekly_view` with
+  `request_id`, `user_id`, `day_count`, and a timestamp, and echoes the same
+  `request_id` / `generated_at` in a `metadata` block on the response body
+  itself (`server/src/routes/analytics.ts`, `getWeeklyAnalytics`) — so an
+  aggregate analytics response, not just a single-record read, can be
+  correlated back to a specific request.
 
 Together this gives every access and every flagged-quality event a durable,
 correlatable audit trail — sufficient to reconstruct, for a disputed total

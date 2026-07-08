@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { prisma } from "../utils/prisma";
 import { authMiddleware } from "../middleware/auth";
+import { logger } from "../utils/config";
 
 export async function getWeeklyAnalytics(req: Request, res: Response) {
   const userId = req.user!.id;
@@ -49,7 +51,23 @@ export async function getWeeklyAnalytics(req: Request, res: Response) {
     });
   }
 
-  return res.json({ days, period: "weekly" });
+  // Automatic logging capability (Art. 12.1) — tie this read to a request
+  // correlation ID, both in a queryable audit log line and in the response
+  // body itself, mirroring getExercises/getTodaySummary.
+  const requestId = req.requestId ?? randomUUID();
+  const generatedAt = new Date().toISOString();
+  logger.info(
+    `analytics_weekly_view request_id=${requestId} user_id=${userId} day_count=${days.length} timestamp=${generatedAt}`
+  );
+
+  return res.json({
+    days,
+    period: "weekly",
+    metadata: {
+      request_id: requestId,
+      generated_at: generatedAt,
+    },
+  });
 }
 
 export async function getMonthlyAnalytics(req: Request, res: Response) {
