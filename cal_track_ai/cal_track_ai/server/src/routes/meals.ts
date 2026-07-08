@@ -111,15 +111,12 @@ Always explain the health_score in health_score_rationale.`;
 
     try {
       const nutritionData = JSON.parse(cleanText) as Record<string, unknown>;
-            const isFood = nutritionData.is_food !== false;
-      const confidence = Number(nutritionData.confidence ?? 1);
-      if (!isFood || confidence < 0.4) {
-        logger.warn(`Meal analysis refused: is_food=${isFood} confidence=${confidence}`);
+
+      if (nutritionData.is_food === false) {
+        logger.info(`Meal analysis refused: ${nutritionData.refusal_reason}`);
         return res.status(422).json({
-          detail: "Could not confidently identify a meal in this image. " +
-                  "Please retake the photo or enter the meal manually.",
-          needs_manual_entry: true,
-          confidence,
+          detail: nutritionData.refusal_reason || "This image doesn't appear to show food and was not analyzed.",
+          is_food: false,
         });
       }
 
@@ -135,10 +132,7 @@ Always explain the health_score in health_score_rationale.`;
         ingredients: nutritionData.ingredients || [],
         meal_description: nutritionData.meal_description || "",
         meal_type,
-        health_score_rationale: nutritionData.health_score_rationale || "",   // ADD
-        assumptions: nutritionData.assumptions || "",                          // ADD
-        confidence: Number(nutritionData.confidence ?? 1),                     // ADD
-
+        ai_disclosure: AI_DISCLOSURE,
       });
     } catch (e) {
       logger.error(`Failed to parse Gemini response: ${e}`);
