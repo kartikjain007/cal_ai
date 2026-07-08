@@ -95,3 +95,9 @@ model Exercise {
   @@index([loggedAt])
   @@map("exercises")
 }
+
+model Meal {
+  // ...existing fields...
+  confidence       Float?
+  flaggedForReview Boolean @default(false)
+}
