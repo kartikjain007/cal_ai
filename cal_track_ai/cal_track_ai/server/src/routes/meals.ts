@@ -251,6 +251,20 @@ export async function getTodaySummary(req: Request, res: Response) {
       disclaimer:
         "Totals are aggregated from AI-estimated per-meal values, not lab-measured; individual meal estimates may deviate meaningfully from actual nutrient content. flagged_meal_count indicates how many contributing meals failed a plausibility check (see docs/DATA_GOVERNANCE.md) and should be reviewed before trusting this total.",
     },
+    instructions_for_use: {
+      intended_use:
+        "Informational self-tracking reference comparing today's estimated intake to the user's personal goals. Not a medical, clinical, or regulatory nutrition measurement.",
+      how_to_interpret: [
+        "total_* fields are the sum of AI-estimated per-meal values for the queried day, not a lab-measured total.",
+        "goal_* fields reflect the user's current profile settings and may be out of date if the user hasn't updated them recently.",
+        "Treat total_* as directional guidance against goal_* (e.g. 'roughly on track'), not a precise deficit/surplus figure.",
+        "If data_quality.flagged_meal_count > 0, this total includes at least one meal that failed a plausibility check — review data_quality.flagged_meal_ids via GET /api/meals/:mealId before relying on the total.",
+        "meal_count reflects saved meals only; unsaved/discarded analyses are not included.",
+      ],
+      human_oversight:
+        "Any contributing meal's estimated values can be corrected via PUT /api/meals/:mealId, which changes this total on the next request. There is no automated correction — a human must review and edit.",
+      instructions_doc: "https://github.com/kartikjain007/cal_ai/blob/main/docs/DATA_GOVERNANCE.md",
+    },
   });
 }
 

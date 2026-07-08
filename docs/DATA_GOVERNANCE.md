@@ -126,3 +126,29 @@ mis-entered value is corrected by deleting (`DELETE
 
 General wellness / self-tracking reference only — not a certified nutrition
 or medical measurement.
+
+## Instructions for use — `GET /api/meals/today-summary`
+
+This endpoint aggregates per-meal AI estimates into a daily total, which is
+also returned inline as `instructions_for_use` on every response
+(`server/src/routes/meals.ts`, `getTodaySummary`). This section is the
+durable reference that field links back to.
+
+- **What the output represents**: `total_calories`/`total_protein`/
+  `total_carbs`/`total_fats` are the sum of AI-estimated per-meal values for
+  the queried day — not a lab-measured total. Treat them as directional
+  guidance against `goal_*` (e.g. "roughly on track"), not a precise figure.
+- **How to read `goal_*`**: these reflect the user's current profile
+  settings and may be stale if the user hasn't updated their goals recently.
+- **How to read `data_quality`**: if `flagged_meal_count > 0`, at least one
+  contributing meal failed a plausibility check (see "Output data quality
+  controls" above). Review the meals in `flagged_meal_ids` via `GET
+  /api/meals/:mealId` before treating the total as reliable.
+- **What action to take on a suspect total**: correct the underlying meal via
+  `PUT /api/meals/:mealId` — there is no automated correction, a human must
+  review and edit. The total updates on the next request once corrected.
+- **What's excluded**: `meal_count` and the totals only include saved meals;
+  an analysis the user never saved via `POST /api/meals` does not contribute.
+- **Not intended for**: clinical dosing/titration decisions, regulatory
+  nutrition reporting, or any use where a precise (not approximate) daily
+  total is required.
