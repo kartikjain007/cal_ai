@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { prisma } from "../utils/prisma";
 import { mealAnalyzeSchema, mealSaveSchema, mealUpdateSchema, validateMealEstimate } from "../utils/validation";
 import { authMiddleware } from "../middleware/auth";
@@ -217,6 +218,16 @@ export async function getTodaySummary(req: Request, res: Response) {
     {} as Record<string, number>
   );
 
+  const flaggedMeals = meals.filter((m) => m.flaggedForReview);
+  const requestId = req.requestId ?? randomUUID();
+  const generatedAt = new Date().toISOString();
+
+  if (flaggedMeals.length > 0) {
+    logger.warn(
+      `today_summary_includes_flagged_meals request_id=${requestId} user_id=${userId} flagged_count=${flaggedMeals.length} total_meals=${meals.length}`
+    );
+  }
+
   return res.json({
     total_calories: totals.calories || 0,
     total_protein: totals.protein || 0,
@@ -227,6 +238,19 @@ export async function getTodaySummary(req: Request, res: Response) {
     goal_protein: req.user!.dailyProtein,
     goal_carbs: req.user!.dailyCarbs,
     goal_fats: req.user!.dailyFats,
+    metadata: {
+      request_id: requestId,
+      generated_at: generatedAt,
+    },
+    data_quality: {
+      source: "ai_estimated",
+      method: "gemini_nutrition_analysis_per_meal",
+      confidence_level: "approximate",
+      flagged_meal_count: flaggedMeals.length,
+      flagged_meal_ids: flaggedMeals.map((m) => String(m.id)),
+      disclaimer:
+        "Totals are aggregated from AI-estimated per-meal values, not lab-measured; individual meal estimates may deviate meaningfully from actual nutrient content. flagged_meal_count indicates how many contributing meals failed a plausibility check (see docs/DATA_GOVERNANCE.md) and should be reviewed before trusting this total.",
+    },
   });
 }
 

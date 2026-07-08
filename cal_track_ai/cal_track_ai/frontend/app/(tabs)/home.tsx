@@ -186,9 +186,7 @@ export default function HomeScreen() {
   const handleAddExercise = async () => {
     if (selectedExercise && user?.token) {
       const burned = selectedExercise.calPerMin * exerciseDuration;
-      const now = new Date();
-      const pad = (n: number) => n.toString().padStart(2, '0');
-      const localTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+      const localTime = new Date().toISOString();
       try {
         await axios.post(`${BACKEND_URL}/api/activities/exercises`, {
           exercise_name: selectedExercise.name,
@@ -210,9 +208,7 @@ export default function HomeScreen() {
   const handleAddWater = async () => {
     if (user?.token) {
       try {
-        const now = new Date();
-        const pad = (n: number) => n.toString().padStart(2, '0');
-        const localTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+        const localTime = new Date().toISOString();
         await axios.post(`${BACKEND_URL}/api/activities/water`, {
           amount_ml: waterAmount,
           logged_at: localTime

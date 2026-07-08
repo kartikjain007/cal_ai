@@ -67,6 +67,28 @@ data-entry errors rather than model hallucination
   minutes in the future (clock-skew tolerance), preventing obviously invalid
   timestamps from entering the dataset.
 
+## Aggregate/derived data quality controls
+
+`GET /api/meals/today-summary` sums per-meal AI estimates into daily totals.
+An aggregate inherits the quality risk of every value that feeds it, so
+summing silently would launder individual flagged estimates into a
+seemingly-trustworthy total. To avoid that, the response includes a
+`data_quality` block (`server/src/routes/meals.ts`, `getTodaySummary`) with:
+
+- `flagged_meal_count` / `flagged_meal_ids` — how many of the meals
+  contributing to the total failed a `validateMealEstimate()` plausibility
+  check, so a large or 100%-calorie total built on flagged data is visibly
+  suspect rather than presented as equally reliable to a clean total.
+- `confidence_level: "approximate"` and a disclaimer stating the total is
+  aggregated from AI estimates, not lab-measured values.
+- `metadata.request_id` / `generated_at` for traceability — each summary
+  response can be tied back to a specific request and point in time if a
+  user disputes a total later.
+
+A `today_summary_includes_flagged_meals` warning is logged whenever any
+contributing meal is flagged, so the rate of degraded-quality summaries is
+monitorable server-side, not just visible in the API response.
+
 ## Persisted quality signal
 
 The `Meal` table stores `confidence` and `flaggedForReview`, and the

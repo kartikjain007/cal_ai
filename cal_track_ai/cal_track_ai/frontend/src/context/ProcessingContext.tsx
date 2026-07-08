@@ -31,11 +31,7 @@ interface ProcessingContextType {
   onMealSaved: () => void;
 }
 
-const getLocalTime = () => {
-  const now = new Date();
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${now.getMilliseconds().toString().padStart(3, '0')}`;
-};
+const getLocalTime = () => new Date().toISOString();
 
 const ProcessingContext = createContext<ProcessingContextType>({
   isProcessing: false,
