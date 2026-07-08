@@ -241,5 +241,48 @@ export function validateMealEstimate(estimate: MealEstimate): ValidationResult {
   return { needsReview: reasons.length > 0, reasons };
 }
 
+export interface AccuracyMetrics {
+  metric: string;
+  avg_confidence: number | null;
+  min_confidence: number | null;
+  confidence_threshold: number;
+  meals_below_confidence_threshold: number;
+  meals_scored: number;
+  meals_missing_confidence: number;
+  basis: string;
+}
+
+// Formal accuracy metrics (Art. 15.1), shared by every endpoint that
+// aggregates AI-estimated meals (today-summary, weekly/monthly analytics).
+// Built from each meal's model-reported `confidence` — self-reported model
+// confidence, not an error rate measured against a lab-verified ground
+// truth (this system has no certified nutrition dataset to validate
+// against; see docs/DATA_GOVERNANCE.md "Data provenance"). That scoping is
+// stated in `basis` so the metric isn't mistaken for a validated accuracy
+// guarantee.
+export function computeAccuracyMetrics(meals: { confidence: number | null }[]): AccuracyMetrics {
+  const confidences = meals
+    .map((m) => m.confidence)
+    .filter((c): c is number => typeof c === "number");
+
+  const avgConfidence =
+    confidences.length > 0
+      ? Math.round((confidences.reduce((sum, c) => sum + c, 0) / confidences.length) * 1000) / 1000
+      : null;
+  const minConfidence = confidences.length > 0 ? Math.min(...confidences) : null;
+  const belowThresholdCount = confidences.filter((c) => c < CONFIDENCE_THRESHOLD).length;
+
+  return {
+    metric: "mean_model_reported_confidence",
+    avg_confidence: avgConfidence,
+    min_confidence: minConfidence,
+    confidence_threshold: CONFIDENCE_THRESHOLD,
+    meals_below_confidence_threshold: belowThresholdCount,
+    meals_scored: confidences.length,
+    meals_missing_confidence: meals.length - confidences.length,
+    basis:
+      "These are the AI model's own self-reported confidence scores per meal, aggregated over the queried period — not an error rate measured against a lab-verified ground truth (this system has no certified nutrition dataset to validate against; see docs/DATA_GOVERNANCE.md 'Data provenance' and 'Known limitations'). Treat a low avg_confidence or a nonzero meals_below_confidence_threshold as a signal to review, not a precise error bound.",
+  };
+}
 
 export type ExerciseLogRequest = z.infer<typeof exerciseLogSchema>;

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { prisma } from "../utils/prisma";
 import { authMiddleware } from "../middleware/auth";
+import { computeAccuracyMetrics } from "../utils/validation";
 import { logger } from "../utils/config";
 
 export async function getWeeklyAnalytics(req: Request, res: Response) {
@@ -48,6 +49,11 @@ export async function getWeeklyAnalytics(req: Request, res: Response) {
       carbs: dayMeals.reduce((sum, m) => sum + (m.carbs || 0), 0),
       fats: dayMeals.reduce((sum, m) => sum + (m.fats || 0), 0),
       meal_count: dayMeals.length,
+      flagged_meal_count: dayMeals.filter((m) => m.flaggedForReview).length,
+      // Art. 15.1 — per-day accuracy signal, so a low-quality day is
+      // visible at the granularity it actually occurred, not just diluted
+      // into a week-wide average.
+      accuracy_metrics: computeAccuracyMetrics(dayMeals),
     });
   }
 
@@ -66,6 +72,17 @@ export async function getWeeklyAnalytics(req: Request, res: Response) {
     metadata: {
       request_id: requestId,
       generated_at: generatedAt,
+    },
+    data_quality: {
+      source: "ai_estimated",
+      method: "gemini_nutrition_analysis_per_meal",
+      // Art. 15.1 — week-wide accuracy signal aggregated across every
+      // contributing meal, complementing the per-day accuracy_metrics
+      // above. Same shape/semantics as GET /api/meals/today-summary.
+      accuracy_metrics: computeAccuracyMetrics(meals),
+      flagged_meal_count: meals.filter((m) => m.flaggedForReview).length,
+      disclaimer:
+        "Daily totals are aggregated from AI-estimated per-meal values, not lab-measured; individual meal estimates may deviate meaningfully from actual nutrient content. See docs/DATA_GOVERNANCE.md for the full accuracy-metrics methodology.",
     },
   });
 }

@@ -112,10 +112,12 @@ seemingly-trustworthy total. To avoid that, the response includes a
 - `confidence_level: "approximate"` and a disclaimer stating the total is
   aggregated from AI estimates, not lab-measured values.
 - `accuracy_metrics` — a formal, computed accuracy signal rather than a
-  fixed label (Art. 15.1). Built from the `confidence` score Gemini returns
-  with each meal estimate (`server/src/routes/meals.ts`, `analyzeMeal`),
-  stored per-meal (`Meal.confidence`), and aggregated across the meals
-  contributing to that day's total:
+  fixed label (Art. 15.1), produced by the shared `computeAccuracyMetrics()`
+  helper (`server/src/utils/validation.ts`). Built from the `confidence`
+  score Gemini returns with each meal estimate
+  (`server/src/routes/meals.ts`, `analyzeMeal`), stored per-meal
+  (`Meal.confidence`), and aggregated across the meals contributing to that
+  day's total:
   - `avg_confidence` / `min_confidence` — mean and minimum of the
     contributing meals' model-reported confidence (0.0–1.0), rounded to 3
     decimals.
@@ -141,6 +143,23 @@ seemingly-trustworthy total. To avoid that, the response includes a
 A `today_summary_includes_flagged_meals` warning is logged whenever any
 contributing meal is flagged, so the rate of degraded-quality summaries is
 monitorable server-side, not just visible in the API response.
+
+`GET /api/analytics/weekly` (`server/src/routes/analytics.ts`,
+`getWeeklyAnalytics`) reuses the same `computeAccuracyMetrics()` helper at
+two granularities, since a multi-day aggregate can hide a single bad day
+inside a healthy-looking average:
+
+- Each entry in `days[]` carries its own `accuracy_metrics` and
+  `flagged_meal_count`, scoped to that day's meals only — so a
+  low-confidence or heavily-flagged day is visible at the day it actually
+  occurred in, not diluted into the week-wide figure.
+- A top-level `data_quality.accuracy_metrics` / `flagged_meal_count`
+  aggregates across every meal in the 7-day window, giving a single
+  week-wide accuracy signal analogous to `today-summary`'s.
+
+`GET /api/analytics/monthly` does not yet have this — it duplicates the
+same day-bucketing logic as weekly but wasn't in scope when this was added
+(see "Known limitations").
 
 ## Persisted quality signal
 
@@ -234,6 +253,8 @@ and re-submitting.
   fitness tracker or a rough personal estimate), not independently measured
   by this system — plausibility checks catch obviously implausible values
   but cannot verify accuracy.
+- `GET /api/analytics/monthly` does not yet expose `accuracy_metrics` or
+  `metadata.request_id` — only `today-summary` and the weekly endpoint do.
 
 ## Intended use
 

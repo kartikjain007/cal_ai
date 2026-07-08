@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { prisma } from "../utils/prisma";
 import {
-  CONFIDENCE_THRESHOLD,
+  computeAccuracyMetrics,
   mealAnalyzeSchema,
   mealSaveSchema,
   mealUpdateSchema,
@@ -235,19 +235,8 @@ export async function getTodaySummary(req: Request, res: Response) {
   }
 
   // Formal accuracy metrics (Art. 15.1) — computed from each contributing
-  // meal's model-reported confidence, not a fixed label. There is no
-  // lab-measured ground truth to score estimates against (see
-  // docs/DATA_GOVERNANCE.md "Data provenance"), so these are self-reported
-  // model confidence statistics, not validated error rates — that
-  // limitation is stated explicitly in `basis` below rather than implied.
-  const scoredMeals = meals.filter((m) => typeof m.confidence === "number");
-  const confidences = scoredMeals.map((m) => m.confidence as number);
-  const avgConfidence =
-    confidences.length > 0
-      ? Math.round((confidences.reduce((sum, c) => sum + c, 0) / confidences.length) * 1000) / 1000
-      : null;
-  const minConfidence = confidences.length > 0 ? Math.min(...confidences) : null;
-  const belowThresholdCount = confidences.filter((c) => c < CONFIDENCE_THRESHOLD).length;
+  // meal's model-reported confidence, not a fixed label.
+  const accuracyMetrics = computeAccuracyMetrics(meals);
 
   return res.json({
     total_calories: totals.calories || 0,
@@ -269,17 +258,7 @@ export async function getTodaySummary(req: Request, res: Response) {
       confidence_level: "approximate",
       flagged_meal_count: flaggedMeals.length,
       flagged_meal_ids: flaggedMeals.map((m) => String(m.id)),
-      accuracy_metrics: {
-        metric: "mean_model_reported_confidence",
-        avg_confidence: avgConfidence,
-        min_confidence: minConfidence,
-        confidence_threshold: CONFIDENCE_THRESHOLD,
-        meals_below_confidence_threshold: belowThresholdCount,
-        meals_scored: confidences.length,
-        meals_missing_confidence: meals.length - confidences.length,
-        basis:
-          "These are the AI model's own self-reported confidence scores per meal, aggregated for the day — not an error rate measured against a lab-verified ground truth (this system has no certified nutrition dataset to validate against; see docs/DATA_GOVERNANCE.md 'Data provenance' and 'Known limitations'). Treat low avg_confidence or a nonzero meals_below_confidence_threshold as a signal to review, not a precise error bound.",
-      },
+      accuracy_metrics: accuracyMetrics,
       disclaimer:
         "Totals are aggregated from AI-estimated per-meal values, not lab-measured; individual meal estimates may deviate meaningfully from actual nutrient content. flagged_meal_count indicates how many contributing meals failed a plausibility check (see docs/DATA_GOVERNANCE.md) and should be reviewed before trusting this total.",
     },
