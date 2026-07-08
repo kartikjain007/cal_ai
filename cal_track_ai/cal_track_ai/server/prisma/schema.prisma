@@ -96,6 +96,12 @@ model Exercise {
   @@map("exercises")
 }
 
+model WaterLog {
+  // ...existing fields...
+  flaggedForReview Boolean @default(false)
+}
+
+
 model Meal {
   // ...existing fields...
   confidence       Float?
