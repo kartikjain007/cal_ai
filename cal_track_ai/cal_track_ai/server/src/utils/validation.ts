@@ -91,10 +91,29 @@ export const onboardingSchema = z.object({
 
 export type OnboardingRequest = z.infer<typeof onboardingSchema>;
 
+// Physiologically implausible above this in a single entry — catches
+// unit-entry errors (e.g. oz typed into an ml field) and bad client data.
+const MAX_SINGLE_WATER_LOG_ML = 5000;
+
+// Reasonable ceiling for total daily intake before an entry is treated
+// as a data quality anomaly rather than accepted as fact.
+export const MAX_DAILY_WATER_ML = 15000;
+
 export const waterLogSchema = z.object({
-  amount_ml: z.number().gt(0),
-  logged_at: z.string().optional(),
+  amount_ml: z
+    .number()
+    .gt(0, "amount_ml must be positive")
+    .max(MAX_SINGLE_WATER_LOG_ML, `amount_ml exceeds plausible single-entry maximum of ${MAX_SINGLE_WATER_LOG_ML}ml`),
+  logged_at: z
+    .string()
+    .datetime({ message: "logged_at must be a valid ISO 8601 timestamp" })
+    .optional()
+    .refine(
+      (val) => !val || new Date(val).getTime() <= Date.now() + 5 * 60 * 1000, // 5 min clock-skew tolerance
+      { message: "logged_at cannot be in the future" }
+    ),
 });
+
 
 export type WaterLogRequest = z.infer<typeof waterLogSchema>;
 
