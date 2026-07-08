@@ -1,10 +1,11 @@
-# Data Governance — Meal Analysis & Logging
+# Data Governance — Meal & Activity Logging
 
 This document is the data governance reference linked from every meal analysis
-response (`ai_disclosure.data_governance_doc` in `POST /api/meals/analyze`).
-It covers the data that flows through meal logging: images submitted for
-analysis, the AI-estimated nutrition values returned, and the meal records
-users save.
+response (`ai_disclosure.data_governance_doc` in `POST /api/meals/analyze`),
+and applies to logged activity data more broadly. It covers the data that
+flows through meal logging (images submitted for analysis, the AI-estimated
+nutrition values returned, and the meal records users save) and through
+activity logging (water intake entries).
 
 ## Data provenance
 
@@ -46,23 +47,48 @@ returned/stored with `needs_review: true` and a machine-readable
 hidden. This mirrors the daily-total anomaly check already applied to water
 log entries (`MAX_DAILY_WATER_ML` in `server/src/routes/activities.ts`).
 
+## Water logging data quality controls
+
+Water intake is user-entered, not AI-estimated, so the controls target
+data-entry errors rather than model hallucination
+(`server/src/utils/validation.ts`, `waterLogSchema`; `server/src/routes/activities.ts`):
+
+- **Single-entry plausibility ceiling** — an individual `amount_ml` entry
+  above `MAX_SINGLE_WATER_LOG_ML` (5000ml) is rejected outright at the
+  schema level. This catches unit-entry mistakes (e.g. oz typed into an ml
+  field) before they're stored at all.
+- **Daily-total anomaly check** — on each save, `saveWater` sums the day's
+  existing entries and projects the new total. If the projected total
+  exceeds `MAX_DAILY_WATER_ML` (15000ml), the entry is **not rejected** —
+  it's stored with `flaggedForReview: true` so implausible cumulative
+  intake is auditable rather than silently accepted as fact or silently
+  dropped.
+- **Future-dated entries rejected** — `logged_at` cannot be more than 5
+  minutes in the future (clock-skew tolerance), preventing obviously invalid
+  timestamps from entering the dataset.
+
 ## Persisted quality signal
 
-The `Meal` table stores `confidence` and `flaggedForReview` alongside every
-saved meal (see `prisma/schema.prisma`). This means data quality is not just
-a one-time check at request time — flagged entries remain queryable after
-the fact, so quality regressions in model output (e.g. a Gemini model
-version change producing more implausible estimates) can be detected by
-monitoring the rate of `flaggedForReview = true` records over time.
+The `Meal` table stores `confidence` and `flaggedForReview`, and the
+`WaterLog` table stores `flaggedForReview`, alongside every saved record
+(see `prisma/schema.prisma`). This means data quality is not just a
+one-time check at request time — flagged entries remain queryable after the
+fact via `GET /api/meals` and `GET /api/activities/water` (both return
+`needs_review`), so quality regressions (e.g. a Gemini model version change
+producing more implausible estimates, or a client bug causing bad water log
+submissions) can be detected by monitoring the rate of flagged records over
+time.
 
 ## Human-in-the-loop correction
 
-Users can review and correct any AI-estimated value via `PUT
+Users can review and correct any AI-estimated meal value via `PUT
 /api/meals/:mealId` before or after saving. User-submitted corrections are
 not re-validated against the model's original estimate — a corrected value
 is treated as ground truth from the person who observed the actual food.
 This is the primary mechanism by which incorrect AI output is caught and
-fixed in this system.
+fixed in this system. Water log entries have no update endpoint — a
+mis-entered value is corrected by deleting (`DELETE
+/api/activities/water/:logId`) and re-submitting.
 
 ## Known limitations
 

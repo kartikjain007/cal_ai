@@ -112,6 +112,7 @@ export async function getWater(req: Request, res: Response) {
       id: String(r.id),
       amount_ml: r.amountMl,
       logged_at: r.loggedAt.toISOString(),
+      needs_review: r.flaggedForReview,
       type: "water",
     }))
   );
