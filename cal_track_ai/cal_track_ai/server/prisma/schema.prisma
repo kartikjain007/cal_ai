@@ -58,6 +58,8 @@ model Meal {
   imageBase64    String?   @map("image_base64")
   loggedAt       DateTime?  @map("logged_at") @db.Timestamptz
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  confidence       Float?
+  flaggedForReview Boolean @default(false)
 
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -72,6 +74,7 @@ model WaterLog {
   amountMl Int      @map("amount_ml")
   loggedAt DateTime @map("logged_at") @db.Timestamptz
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  flaggedForReview Boolean @default(false)
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -96,14 +99,5 @@ model Exercise {
   @@map("exercises")
 }
 
-model WaterLog {
-  // ...existing fields...
-  flaggedForReview Boolean @default(false)
-}
 
 
-model Meal {
-  // ...existing fields...
-  confidence       Float?
-  flaggedForReview Boolean @default(false)
-}

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../utils/prisma";
-import { mealAnalyzeSchema, mealSaveSchema, mealUpdateSchema } from "../utils/validation";
+import { mealAnalyzeSchema, mealSaveSchema, mealUpdateSchema, validateMealEstimate } from "../utils/validation";
 import { authMiddleware } from "../middleware/auth";
 import { config, logger } from "../utils/config";
 
@@ -120,18 +120,42 @@ Always explain the health_score in health_score_rationale.`;
         });
       }
 
+      const calories = Number(nutritionData.calories) || 0;
+      const protein = Number(nutritionData.protein) || 0;
+      const carbs = Number(nutritionData.carbs) || 0;
+      const fats = Number(nutritionData.fats) || 0;
+      const fiber = Number(nutritionData.fiber) || 0;
+      const quantityGrams = Number(nutritionData.quantity_grams) || 100;
+      const confidence = typeof nutritionData.confidence === "number" ? nutritionData.confidence : undefined;
+
+      const quality = validateMealEstimate({
+        calories,
+        protein,
+        carbs,
+        fats,
+        fiber,
+        quantityGrams,
+        confidence,
+      });
+      if (quality.needsReview) {
+        logger.warn(`meal_estimate_flagged reasons=${quality.reasons.join(",")}`);
+      }
+
       return res.json({
         food_name: nutritionData.food_name || "Unknown Food",
-        calories: nutritionData.calories || 0,
-        protein: nutritionData.protein || 0,
-        carbs: nutritionData.carbs || 0,
-        fats: nutritionData.fats || 0,
-        fiber: nutritionData.fiber || 0,
+        calories,
+        protein,
+        carbs,
+        fats,
+        fiber,
         health_score: nutritionData.health_score || 5,
-        quantity_grams: nutritionData.quantity_grams || 100,
+        quantity_grams: quantityGrams,
         ingredients: nutritionData.ingredients || [],
         meal_description: nutritionData.meal_description || "",
         meal_type,
+        confidence,
+        needs_review: quality.needsReview,
+        flag_reasons: quality.reasons,
         ai_disclosure: AI_DISCLOSURE,
       });
     } catch (e) {
@@ -217,6 +241,19 @@ export async function saveMeal(req: Request, res: Response) {
 
   const loggedAt = data.logged_at ? new Date(data.logged_at) : new Date();
 
+  const quality = validateMealEstimate({
+    calories: data.calories,
+    protein: data.protein,
+    carbs: data.carbs,
+    fats: data.fats,
+    fiber: data.fiber,
+    quantityGrams: data.quantity_grams,
+    confidence: data.confidence,
+  });
+  if (quality.needsReview) {
+    logger.warn(`meal_save_flagged reasons=${quality.reasons.join(",")}`);
+  }
+
   const meal = await prisma.meal.create({
     data: {
       userId,
@@ -233,6 +270,8 @@ export async function saveMeal(req: Request, res: Response) {
       mealType: data.meal_type,
       imageBase64: data.image_base64,
       loggedAt,
+      confidence: data.confidence,
+      flaggedForReview: quality.needsReview,
     },
   });
 
@@ -250,6 +289,9 @@ export async function saveMeal(req: Request, res: Response) {
     meal_description: meal.mealDescription,
     meal_type: meal.mealType,
     logged_at: meal.loggedAt?.toISOString(),
+    confidence: meal.confidence,
+    needs_review: meal.flaggedForReview,
+    flag_reasons: quality.reasons,
   });
 }
 
@@ -300,6 +342,8 @@ export async function getMeals(req: Request, res: Response) {
       ingredients: m.ingredients,
       image_base64: m.imageBase64,
       logged_at: m.loggedAt?.toISOString(),
+      confidence: m.confidence,
+      needs_review: m.flaggedForReview,
     }))
   );
 }
@@ -337,6 +381,8 @@ export async function getMealDetail(req: Request, res: Response) {
     image_base64: meal.imageBase64,
     logged_at: meal.loggedAt?.toISOString(),
     created_at: meal.createdAt.toISOString(),
+    confidence: meal.confidence,
+    needs_review: meal.flaggedForReview,
   });
 }
 

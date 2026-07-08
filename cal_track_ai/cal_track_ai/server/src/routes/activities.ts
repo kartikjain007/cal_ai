@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../utils/prisma";
 import { authMiddleware } from "../middleware/auth";
-import { waterLogSchema, exerciseLogSchema } from "../utils/validation";
+import { waterLogSchema, exerciseLogSchema, MAX_DAILY_WATER_ML } from "../utils/validation";
+import { logger } from "../utils/config";
 
 export async function saveWater(req: Request, res: Response) {
   const parseResult = waterLogSchema.safeParse(req.body);
@@ -33,7 +34,7 @@ if (projectedTotal > MAX_DAILY_WATER_ML) {
   // for the same review flag pattern used on meal estimates
 }
 
-const log = await prisma.waterLog.create({
+const waterLog = await prisma.waterLog.create({
   data: {
     userId,
     amountMl: amount_ml,
@@ -47,6 +48,7 @@ const log = await prisma.waterLog.create({
     id: String(waterLog.id),
     amount_ml: waterLog.amountMl,
     logged_at: waterLog.loggedAt.toISOString(),
+    needs_review: waterLog.flaggedForReview,
     type: "water",
   });
 }

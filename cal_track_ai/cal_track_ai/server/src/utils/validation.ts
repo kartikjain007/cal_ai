@@ -15,8 +15,19 @@ export const loginSchema = z.object({
 
 export type LoginRequest = z.infer<typeof loginSchema>;
 
+// ~10MB of base64 text (matches the express.json body limit) — rejects
+// obviously-broken or abusive uploads before they're sent to the model.
+const MAX_IMAGE_BASE64_LENGTH = 14_000_000;
+
 export const mealAnalyzeSchema = z.object({
-  image_base64: z.string(),
+  image_base64: z
+    .string()
+    .min(1, "image_base64 is required")
+    .max(MAX_IMAGE_BASE64_LENGTH, "image_base64 exceeds maximum allowed size")
+    .refine(
+      (val) => /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(val) || /^[A-Za-z0-9+/]+=*$/.test(val.trim()),
+      { message: "image_base64 must be a base64-encoded image (optionally a data: URI)" }
+    ),
   meal_type: z.string().default("snack"),
 });
 
@@ -36,6 +47,7 @@ export const mealSaveSchema = z.object({
   quantity_grams: z.number().default(100),
   image_base64: z.string().default(""),
   logged_at: z.string().optional(),
+  confidence: z.number().min(0).max(1).optional(),
 });
 
 export type MealSaveRequest = z.infer<typeof mealSaveSchema>;
