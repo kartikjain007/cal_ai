@@ -90,6 +90,25 @@ Always explain the health_score in health_score_rationale.`;
       .replace(/```$/, "")
       .trim();
 
+    const AI_DISCLOSURE = {
+  model_provider: "Google",
+  model_name: config.geminiModel,
+  analysis_type: "ai_estimate",
+  data_provenance:
+    "This system uses a third-party foundation model and does not train or curate " +
+    "its own dataset. See data_governance_doc for the full provenance statement and " +
+    "what we do/do not independently verify.",
+  data_governance_doc: "https://github.com/kartikjain007/cal_ai/blob/main/docs/DATA_GOVERNANCE.md",
+  limitations: [
+    "Portion size and calorie/macro values are visual estimates and may differ meaningfully from a lab-measured value.",
+    "Not validated for medical, clinical, or allergen-safety decisions — verify with a qualified professional before relying on this for a health condition.",
+    "Accuracy may be lower for mixed dishes, unfamiliar cuisines, or partially obscured food.",
+    "Not cross-checked against a certified nutrition database (e.g. USDA FoodData Central).",
+  ],
+  intended_use: "General wellness / self-tracking reference only — not a certified nutrition or medical measurement.",
+};
+
+
     try {
       const nutritionData = JSON.parse(cleanText) as Record<string, unknown>;
             const isFood = nutritionData.is_food !== false;
