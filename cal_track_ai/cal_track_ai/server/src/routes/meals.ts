@@ -17,7 +17,6 @@ export async function analyzeMeal(req: Request, res: Response) {
     return res.status(400).json({ detail: parseResult.error.errors });
   }
 
-  console.log('Gemini API key not configured', config);
   if (!config.geminiApiKey) {
     return res.status(500).json({ detail: "AI service not configured" });
   }

@@ -7,7 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only --watch src,../backend src/index.ts",
     "build": "prisma generate && tsc",
     "postinstall": "prisma generate",
-    "start": "node dist/index.js",
+    "start": "prisma migrate deploy && node dist/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:push": "prisma db push"

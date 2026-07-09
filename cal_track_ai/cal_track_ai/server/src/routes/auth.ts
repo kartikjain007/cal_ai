@@ -47,7 +47,7 @@ export async function register(req: Request, res: Response) {
 
   res.cookie("access_token", accessToken, {
     httpOnly: true,
-    secure: false,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 86400,
     path: "/",
@@ -55,7 +55,7 @@ export async function register(req: Request, res: Response) {
 
   res.cookie("refresh_token", refreshToken, {
     httpOnly: true,
-    secure: false,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 604800,
     path: "/",
@@ -90,7 +90,7 @@ export async function login(req: Request, res: Response) {
 
   res.cookie("access_token", accessToken, {
     httpOnly: true,
-    secure: false,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 86400,
     path: "/",
@@ -98,7 +98,7 @@ export async function login(req: Request, res: Response) {
 
   res.cookie("refresh_token", refreshToken, {
     httpOnly: true,
-    secure: false,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 604800,
     path: "/",

@@ -20,8 +20,12 @@ declare global {
 
 const app = express();
 
+// The app authenticates via a Bearer token in the Authorization header (see
+// frontend AuthContext), not cookies — no client ever sets withCredentials.
+// credentials:true + origin:true would let any website make authenticated,
+// cookie-bearing cross-origin requests on a logged-in user's behalf for no
+// functional benefit, so credentials is left off.
 app.use(cors({
-  credentials: true,
   origin: true,
 }));
 app.use(express.json({ limit: "10mb" }));
