@@ -172,6 +172,18 @@ as today-summary/weekly, plus `metadata.request_id` for traceability. A
 `meals_list_view` line is logged on every read with `request_id`,
 `user_id`, `count`, and `flagged_count`.
 
+`data_quality.training_data_provenance` on that same response restates, at
+the point of use, the same scoping already established in "Data
+provenance" above (Art. 10.1): this system has no in-house
+training/validation/testing dataset behind these estimates, so there is no
+quality/representativeness/validation-split metric for *this* system to
+report — that obligation belongs to the foundation model provider. Rather
+than the response being silent on training-data quality (which reads as an
+unexamined gap), it states explicitly what this system does and doesn't
+control, and links back to `data_governance_doc`. Not yet applied to
+`today-summary` or the analytics endpoints — same rationale would apply if
+extended there.
+
 ## Persisted quality signal
 
 The `Meal` table stores `confidence` and `flaggedForReview`, and the

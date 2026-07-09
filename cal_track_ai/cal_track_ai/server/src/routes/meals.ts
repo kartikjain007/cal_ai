@@ -411,6 +411,18 @@ export async function getMeals(req: Request, res: Response) {
       method: "gemini_nutrition_analysis_per_meal",
       accuracy_metrics: computeAccuracyMetrics(meals),
       flagged_meal_count: flaggedCount,
+      // Art. 10.1 — training/validation/testing data quality. There is no
+      // in-house dataset behind these estimates to report quality,
+      // representativeness, or validation metrics on; this states that
+      // scope explicitly rather than the gap being silent about it.
+      training_data_provenance: {
+        own_training_data: false,
+        model_provider: "Google",
+        model_name: config.geminiModel,
+        statement:
+          "Nutrition values are produced by a third-party foundation model (Google Gemini). This system does not train, fine-tune, or curate a training/validation/testing dataset of its own, so there is no in-house dataset whose quality, representativeness, or validation split this system can report metrics on — that obligation sits with the model provider, not this application. The data quality controls this system does apply and does control are: input validation before an image is sent to the model, and output plausibility checks after (see accuracy_metrics above, plus confidence thresholding, calorie-density, and macro-mismatch checks in docs/DATA_GOVERNANCE.md).",
+        data_governance_doc: "https://github.com/kartikjain007/cal_ai/blob/main/docs/DATA_GOVERNANCE.md",
+      },
       disclaimer:
         "Each meal is an AI-estimated value, not lab-measured; see accuracy_metrics.basis and docs/DATA_GOVERNANCE.md for methodology.",
     },
