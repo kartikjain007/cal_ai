@@ -172,6 +172,17 @@ as today-summary/weekly, plus `metadata.request_id` for traceability. A
 `meals_list_view` line is logged on every read with `request_id`,
 `user_id`, `count`, and `flagged_count`.
 
+`GET /api/meals` also no longer returns each meal's `image_base64` — a list
+of up to 100 meals shouldn't pull every full-resolution photo out of the
+database and over the wire to render cards that don't display them at full
+size. The Prisma query for the list uses an explicit `select` that omits
+`imageBase64` entirely (not just a response-mapping omission), so the list
+endpoint doesn't pay the DB/network cost for image bytes it doesn't need.
+The photo is still available from `GET /api/meals/:mealId` (detail view);
+`frontend/app/(tabs)/home.tsx`'s in-page meal detail modal fetches it
+lazily from that endpoint when a card is opened, rather than requiring it
+in the list payload.
+
 `data_quality.training_data_provenance` on that same response restates, at
 the point of use, the same scoping already established in "Data
 provenance" above (Art. 10.1): this system has no in-house

@@ -370,10 +370,31 @@ export async function getMeals(req: Request, res: Response) {
     }
   }
 
+  // image_base64 is excluded here (list view) and only returned by
+  // GET /api/meals/:mealId (detail view) — a list of up to 100 meals
+  // shouldn't pull every full-resolution photo out of the DB and over the
+  // wire just to render a card that doesn't show it at full size anyway.
   const meals = await prisma.meal.findMany({
     where,
     orderBy: { loggedAt: "desc" },
     take: 100,
+    select: {
+      id: true,
+      foodName: true,
+      calories: true,
+      protein: true,
+      carbs: true,
+      fats: true,
+      fiber: true,
+      healthScore: true,
+      quantityGrams: true,
+      mealType: true,
+      mealDescription: true,
+      ingredients: true,
+      loggedAt: true,
+      confidence: true,
+      flaggedForReview: true,
+    },
   });
 
   // Formal data quality metrics (Art. 10.1) — each meal already carries its
@@ -401,7 +422,6 @@ export async function getMeals(req: Request, res: Response) {
       meal_type: m.mealType,
       meal_description: m.mealDescription,
       ingredients: m.ingredients,
-      image_base64: m.imageBase64,
       logged_at: m.loggedAt?.toISOString(),
       confidence: m.confidence,
       needs_review: m.flaggedForReview,

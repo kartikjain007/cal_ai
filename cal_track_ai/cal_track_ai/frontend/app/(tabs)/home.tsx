@@ -725,6 +725,20 @@ export default function HomeScreen() {
                   setEditBaseFats(item.fats || 0);
                   setMealEdited(false);
                   setMealDetailModalVisible(true);
+                  // GET /api/meals list omits image_base64 for payload size;
+                  // fetch the photo lazily for this detail view only.
+                  if (user?.token) {
+                    axios
+                      .get(`${BACKEND_URL}/api/meals/${item.id}`, {
+                        headers: { Authorization: `Bearer ${user.token}` },
+                      })
+                      .then((res) => {
+                        setSelectedMealItem((prev) =>
+                          prev && prev.id === item.id ? { ...prev, image_base64: res.data.image_base64 } : prev
+                        );
+                      })
+                      .catch(() => {});
+                  }
                 } else if (item.type === 'water') {
                   setSelectedMealItem(item);
                   setWaterDetailModalVisible(true);
