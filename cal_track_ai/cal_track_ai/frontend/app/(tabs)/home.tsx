@@ -263,7 +263,7 @@ export default function HomeScreen() {
       setSummary(summaryRes.data);
 
       const allItems: TimelineItem[] = [
-        ...mealsRes.data.map((m: any) => ({ ...m, type: 'meal' })),
+        ...mealsRes.data.meals.map((m: any) => ({ ...m, type: 'meal' })),
         ...waterRes.data,
         ...exerciseRes.data,
       ].sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime());

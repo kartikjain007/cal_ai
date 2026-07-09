@@ -376,8 +376,19 @@ export async function getMeals(req: Request, res: Response) {
     take: 100,
   });
 
-  return res.json(
-    meals.map((m) => ({
+  // Formal data quality metrics (Art. 10.1) — each meal already carries its
+  // own confidence/needs_review, but a list of individually-flagged records
+  // doesn't by itself surface the quality of the *page as a whole*. Reuse
+  // the same computeAccuracyMetrics() helper as today-summary/weekly so a
+  // caller can see at a glance how reliable this batch of estimates is.
+  const requestId = req.requestId ?? randomUUID();
+  const flaggedCount = meals.filter((m) => m.flaggedForReview).length;
+  logger.info(
+    `meals_list_view request_id=${requestId} user_id=${userId} count=${meals.length} flagged_count=${flaggedCount}`
+  );
+
+  return res.json({
+    meals: meals.map((m) => ({
       id: String(m.id),
       food_name: m.foodName,
       calories: m.calories,
@@ -394,8 +405,20 @@ export async function getMeals(req: Request, res: Response) {
       logged_at: m.loggedAt?.toISOString(),
       confidence: m.confidence,
       needs_review: m.flaggedForReview,
-    }))
-  );
+    })),
+    data_quality: {
+      source: "ai_estimated",
+      method: "gemini_nutrition_analysis_per_meal",
+      accuracy_metrics: computeAccuracyMetrics(meals),
+      flagged_meal_count: flaggedCount,
+      disclaimer:
+        "Each meal is an AI-estimated value, not lab-measured; see accuracy_metrics.basis and docs/DATA_GOVERNANCE.md for methodology.",
+    },
+    metadata: {
+      request_id: requestId,
+      generated_at: new Date().toISOString(),
+    },
+  });
 }
 
 export async function getMealDetail(req: Request, res: Response) {

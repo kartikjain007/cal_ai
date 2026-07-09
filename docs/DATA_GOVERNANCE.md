@@ -161,6 +161,17 @@ inside a healthy-looking average:
 same day-bucketing logic as weekly but wasn't in scope when this was added
 (see "Known limitations").
 
+`GET /api/meals` (`server/src/routes/meals.ts`, `getMeals`) returns each
+saved meal with its own `confidence` / `needs_review`, but a list of
+individually-flagged records doesn't by itself show the quality of the page
+as a whole. Its response was restructured from a bare array to
+`{ meals, data_quality, metadata }` (a breaking change to the endpoint's
+shape, with `frontend/app/(tabs)/home.tsx` updated to match) so it could
+carry the same `computeAccuracyMetrics()` aggregate and `flagged_meal_count`
+as today-summary/weekly, plus `metadata.request_id` for traceability. A
+`meals_list_view` line is logged on every read with `request_id`,
+`user_id`, `count`, and `flagged_count`.
+
 ## Persisted quality signal
 
 The `Meal` table stores `confidence` and `flaggedForReview`, and the
