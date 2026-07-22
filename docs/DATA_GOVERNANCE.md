@@ -262,6 +262,57 @@ correlatable audit trail — sufficient to reconstruct, for a disputed total
 or a support request, which request produced a given response and whether
 it involved a data-quality flag.
 
+## Human oversight controls (Art. 14(2))
+
+Three distinct oversight mechanisms give a human the ability to intervene in
+or stop the AI system, in addition to the after-the-fact correction path
+below.
+
+### Pre-save confirmation gate
+
+An AI meal estimate that trips a plausibility check (`needs_review: true`
+from `validateMealEstimate`, see "Output data quality controls" above) is
+**never auto-saved**. The frontend (`frontend/src/context/ProcessingContext.tsx`,
+`frontend/app/meal-result.tsx`) holds the estimate on screen, shows the
+specific reason(s) it was flagged, and requires the user to edit the values
+and explicitly confirm, or discard the estimate outright, before anything is
+written to the database. Estimates that pass all plausibility checks
+continue to auto-save, so this friction is targeted at the estimates most
+likely to be wrong rather than applied uniformly.
+
+### Kill-switch to stop AI analysis
+
+An admin (`User.role === "admin"`) can immediately stop the AI meal-analysis
+pipeline via `POST /api/admin/oversight/status` (`server/src/routes/admin.ts`,
+`server/src/utils/systemSettings.ts`). The switch is a durable database row
+(`SystemSetting`, key `ai_meal_analysis_enabled`), checked at the top of
+`POST /api/meals/analyze` before any request reaches the model — when
+stopped, the endpoint returns `503` with `ai_analysis_enabled: false` and
+sends zero requests to Gemini. This is reachable from the app at Settings →
+Human Oversight Console (`frontend/app/admin-review.tsx`) and requires a
+reason, which is written to the audit trail below. Re-enabling does not
+require a reason.
+
+### Admin review queue
+
+`GET /api/admin/review-queue` lists every meal, exercise, and water-log
+entry currently flagged for review, across all users, for an admin to
+inspect (food/exercise/water amount, the owning user, and — for meals — the
+model's self-reported confidence). `POST
+/api/admin/review-queue/:entityType/:id/decision` resolves an item as
+`approved`, `corrected` (with replacement values), or `rejected` (deletes
+the record). This is the mechanism for oversight of records a user never
+opened themselves — the pre-save gate only covers meals logged through the
+app in real time.
+
+### Audit trail for oversight actions
+
+Every kill-switch toggle and every review-queue decision writes a
+`ReviewAction` row (`entityType`, `entityId`, `reviewerId`, `decision`,
+`note`, `createdAt`) — a durable, queryable record of who intervened, when,
+and why, independent of the request-scoped logging described in "Automatic
+logging & traceability" above.
+
 ## Human-in-the-loop correction
 
 Users can review and correct any AI-estimated meal value via `PUT
@@ -269,8 +320,8 @@ Users can review and correct any AI-estimated meal value via `PUT
 not re-validated against the model's original estimate — a corrected value
 is treated as ground truth from the person who observed the actual food.
 This is the primary mechanism by which incorrect AI output is caught and
-fixed in this system. Water and exercise log entries have no update
-endpoint — a mis-entered value is corrected by deleting (`DELETE
+fixed once a meal is already saved. Water and exercise log entries have no
+update endpoint — a mis-entered value is corrected by deleting (`DELETE
 /api/activities/water/:logId` or `DELETE /api/activities/exercises/:logId`)
 and re-submitting.
 

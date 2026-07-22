@@ -143,6 +143,19 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Human oversight console (Art. 14(2)) — review queue + AI kill-switch, admin only */}
+          {user?.role === 'admin' && (
+            <TouchableOpacity
+              testID="admin-review-link"
+              style={styles.adminBtn}
+              onPress={() => router.push('/admin-review')}
+            >
+              <Ionicons name="shield-checkmark-outline" size={22} color={Colors.brandPrimary} />
+              <Text style={styles.adminBtnText}>Human Oversight Console</Text>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+
           {/* Logout */}
           <TouchableOpacity testID="logout-button" style={styles.logoutBtn} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={22} color={Colors.error} />
@@ -174,6 +187,8 @@ const styles = StyleSheet.create({
   goalInput: { backgroundColor: Colors.surfaceElevated, borderRadius: 10, padding: 10, width: 80, textAlign: 'center', color: Colors.textPrimary, fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: Colors.border },
   saveBtn: { backgroundColor: Colors.brandPrimary, borderRadius: 16, padding: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { fontSize: 16, fontWeight: '800', color: '#000' },
+  adminBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.border, marginBottom: 12 },
+  adminBtnText: { flex: 1, fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: Colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,59,48,0.2)', marginBottom: 20 },
   logoutText: { fontSize: 16, fontWeight: '700', color: Colors.error },
   version: { textAlign: 'center', color: Colors.textDisabled, fontSize: 13, marginBottom: 20 },

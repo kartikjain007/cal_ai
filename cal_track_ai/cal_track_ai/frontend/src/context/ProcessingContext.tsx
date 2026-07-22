@@ -17,6 +17,14 @@ interface AnalysisResult {
   meal_description: string;
   meal_type: string;
   image_base64: string;
+  confidence?: number;
+  // Set by the server's plausibility checks (validateMealEstimate) when an
+  // estimate looks unreliable (low model confidence, implausible calorie
+  // density, macro/calorie mismatch). When true, this result is held for
+  // explicit human confirmation instead of being auto-saved — the Art.
+  // 14(2) intervention point for the person logging the meal.
+  needs_review?: boolean;
+  flag_reasons?: string[];
 }
 
 interface ProcessingContextType {
@@ -27,7 +35,7 @@ interface ProcessingContextType {
   startAnalysis: (imageBase64: string, mealType: string, token: string) => void;
   clearResult: () => void;
   dismissError: () => void;
-  saveMealAuto: (token: string) => Promise<void>;
+  saveMealAuto: (token: string, edits?: Partial<AnalysisResult>) => Promise<void>;
   onMealSaved: () => void;
 }
 
@@ -76,6 +84,16 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       timeout: 90000,
     }).then(async (res) => {
       const analysisResult = { ...res.data, image_base64: imageBase64 };
+
+      // Art. 14(2) human-oversight gate: an estimate the server's
+      // plausibility checks flagged is held here for the user to review,
+      // edit, confirm, or discard — it is never auto-saved.
+      if (analysisResult.needs_review) {
+        setResult(analysisResult);
+        setIsProcessing(false);
+        return;
+      }
+
       setIsSavingAuto(true);
       try {
         await axios.post(`${BACKEND_URL}/api/meals`, {
@@ -92,6 +110,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           meal_type: analysisResult.meal_type || 'snack',
           image_base64: analysisResult.image_base64 || '',
           logged_at: getLocalTime(),
+          confidence: analysisResult.confidence,
         }, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -111,24 +130,26 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     });
   }, [onMealSaved]);
 
-  const saveMealAuto = useCallback(async (token: string) => {
+  const saveMealAuto = useCallback(async (token: string, edits?: Partial<AnalysisResult>) => {
     if (!result) throw new Error('No analysis result available');
+    const merged = { ...result, ...edits };
     setIsSavingAuto(true);
     try {
       await axios.post(`${BACKEND_URL}/api/meals`, {
-        food_name: result.food_name,
-        calories: Math.round(result.calories),
-        protein: result.protein,
-        carbs: result.carbs,
-        fats: result.fats,
-        fiber: result.fiber || 0,
-        health_score: result.health_score || 5,
-        quantity_grams: result.quantity_grams,
-        ingredients: result.ingredients || [],
-        meal_description: result.meal_description || '',
-        meal_type: result.meal_type || 'snack',
-        image_base64: result.image_base64 || '',
+        food_name: merged.food_name,
+        calories: Math.round(merged.calories),
+        protein: merged.protein,
+        carbs: merged.carbs,
+        fats: merged.fats,
+        fiber: merged.fiber || 0,
+        health_score: merged.health_score || 5,
+        quantity_grams: merged.quantity_grams,
+        ingredients: merged.ingredients || [],
+        meal_description: merged.meal_description || '',
+        meal_type: merged.meal_type || 'snack',
+        image_base64: merged.image_base64 || '',
         logged_at: getLocalTime(),
+        confidence: merged.confidence,
       }, {
         headers: { Authorization: `Bearer ${token}` },
       });

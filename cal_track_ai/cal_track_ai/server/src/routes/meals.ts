@@ -10,11 +10,25 @@ import {
 } from "../utils/validation";
 import { authMiddleware } from "../middleware/auth";
 import { config, logger } from "../utils/config";
+import { getAiAnalysisStatus } from "../utils/systemSettings";
 
 export async function analyzeMeal(req: Request, res: Response) {
   const parseResult = mealAnalyzeSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({ detail: parseResult.error.errors });
+  }
+
+  // Human-oversight kill-switch (Art. 14(2)): lets an admin stop the AI
+  // meal-analysis pipeline (e.g. mid-incident) without a deploy. Checked
+  // before the model call so a "stopped" system makes zero AI requests.
+  const oversightStatus = await getAiAnalysisStatus();
+  if (!oversightStatus.enabled) {
+    logger.warn(`meal_analysis_blocked_by_kill_switch user_id=${req.user?.id}`);
+    return res.status(503).json({
+      detail:
+        "AI meal analysis has been paused by an administrator and is temporarily unavailable. You can still log meals manually.",
+      ai_analysis_enabled: false,
+    });
   }
 
   if (!config.geminiApiKey) {

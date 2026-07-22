@@ -37,8 +37,41 @@ model User {
   meals       Meal[]
   waterLogs   WaterLog[]
   exercises  Exercise[]
+  reviewActions ReviewAction[]
 
   @@map("users")
+}
+
+// Human-oversight kill-switch (Art. 14(2)): a durable, admin-controlled flag
+// that lets an authorized person stop the AI meal-analysis pipeline without
+// a deploy. Key/value rather than a dedicated table per switch since this is
+// the first (and, for now, only) one.
+model SystemSetting {
+  key             String    @id
+  value           String
+  updatedByUserId Int?      @map("updated_by_user_id")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@map("system_settings")
+}
+
+// Audit trail for human review of AI-flagged records and for kill-switch
+// toggles (Art. 14(2) — oversight actions must be traceable to a person).
+model ReviewAction {
+  id         Int      @id @default(autoincrement())
+  entityType String   @map("entity_type")
+  entityId   Int      @map("entity_id")
+  reviewerId Int      @map("reviewer_id")
+  decision   String
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  reviewer User @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([reviewerId])
+  @@map("review_actions")
 }
 
 model Meal {

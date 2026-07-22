@@ -9,6 +9,7 @@ interface User {
   email: string;
   name: string;
   token: string;
+  role: string;
   daily_calories: number;
   daily_protein: number;
   daily_carbs: number;

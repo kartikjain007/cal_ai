@@ -1,0 +1,698 @@
+openapi: 3.0.3
+info:
+  title: CalTrack AI API
+  version: "1.0.0"
+  description: >
+    AI-assisted nutrition estimation and meal logging for personal dietary
+    tracking. Informational self-tracking only — not a medical device and
+    not intended to diagnose, treat, or manage any health condition.
+  contact:
+    url: https://github.com/kartikjain007/cal_ai
+servers:
+  - url: http://localhost:3001
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+  - name: meals
+  - name: activities
+  - name: user
+  - name: analytics
+
+paths:
+  /api/auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+                name: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: User created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPayload" }
+        "400":
+          description: Validation error or email already registered
+
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: Log in and obtain an access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPayload" }
+        "401":
+          description: Invalid email or password
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      summary: Get the current authenticated user's profile
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPayload" }
+        "401":
+          description: Not authenticated
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: Log out (clears auth cookies)
+      responses:
+        "200":
+          description: Logged out
+
+  /api/meals/analyze:
+    post:
+      tags: [meals]
+      summary: Analyze a food image and return an AI nutrition estimate (not persisted)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_base64]
+              properties:
+                image_base64: { type: string, description: "Raw base64 or data: URI, max ~10MB" }
+                meal_type: { type: string, default: snack }
+      responses:
+        "200":
+          description: AI nutrition estimate with data-quality and disclosure metadata
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MealAnalysis" }
+        "400":
+          description: Validation error
+        "422":
+          description: Image does not appear to contain food
+        "500":
+          description: AI service not configured or analysis failed
+
+  /api/meals:
+    post:
+      tags: [meals]
+      summary: Save a meal (from an analysis result or manual entry)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MealSaveRequest" }
+      responses:
+        "200":
+          description: Saved meal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Meal" }
+        "400":
+          description: Validation error
+    get:
+      tags: [meals]
+      summary: List saved meals (optionally filtered by day), most recent first
+      description: >
+        Response includes a data_quality block (Art. 10.1) aggregating
+        accuracy metrics across the returned page, and a
+        metadata.request_id / generated_at block (Art. 12.1).
+      parameters:
+        - $ref: "#/components/parameters/DateFilter"
+      responses:
+        "200":
+          description: Up to 100 meals for the queried day
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MealsListResponse" }
+
+  /api/meals/today-summary:
+    get:
+      tags: [meals]
+      summary: Aggregated daily nutrition totals vs. the user's goals
+      description: >
+        Sums AI-estimated per-meal values for the queried day. Response
+        includes data_quality (flagged/low-confidence meal signals) and
+        instructions_for_use (how to interpret the totals) blocks.
+      parameters:
+        - $ref: "#/components/parameters/DateFilter"
+      responses:
+        "200":
+          description: Daily summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TodaySummary" }
+        "401":
+          description: Not authenticated
+
+  /api/meals/{mealId}:
+    get:
+      tags: [meals]
+      summary: Get a single meal by id
+      parameters:
+        - $ref: "#/components/parameters/MealId"
+      responses:
+        "200":
+          description: Meal detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Meal" }
+        "404":
+          description: Meal not found
+    put:
+      tags: [meals]
+      summary: Correct/update fields on a saved meal (human-in-the-loop correction)
+      parameters:
+        - $ref: "#/components/parameters/MealId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                food_name: { type: string }
+                quantity_grams: { type: number }
+                calories: { type: number }
+                protein: { type: number }
+                carbs: { type: number }
+                fats: { type: number }
+                fiber: { type: number }
+      responses:
+        "200":
+          description: Meal updated
+        "404":
+          description: Meal not found
+    delete:
+      tags: [meals]
+      summary: Delete a saved meal
+      parameters:
+        - $ref: "#/components/parameters/MealId"
+      responses:
+        "200":
+          description: Meal deleted
+        "404":
+          description: Meal not found
+
+  /api/activities/water:
+    post:
+      tags: [activities]
+      summary: Log a water intake entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount_ml]
+              properties:
+                amount_ml: { type: number, minimum: 0, maximum: 5000 }
+                logged_at: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Water log created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WaterLog" }
+        "400":
+          description: Validation error
+    get:
+      tags: [activities]
+      summary: List water log entries (optionally filtered by day)
+      parameters:
+        - $ref: "#/components/parameters/DateFilter"
+      responses:
+        "200":
+          description: Water log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WaterLog" }
+
+  /api/activities/water/{logId}:
+    delete:
+      tags: [activities]
+      summary: Delete a water log entry
+      parameters:
+        - $ref: "#/components/parameters/LogId"
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Water log not found
+
+  /api/activities/exercises:
+    post:
+      tags: [activities]
+      summary: Log an exercise entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exercise_name, duration_minutes, calories_burned]
+              properties:
+                exercise_name: { type: string, maxLength: 200 }
+                duration_minutes: { type: number, minimum: 0, maximum: 600 }
+                calories_burned: { type: number, minimum: 0 }
+                logged_at: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Exercise log created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExerciseLog" }
+        "400":
+          description: Validation error
+    get:
+      tags: [activities]
+      summary: List exercise log entries (optionally filtered by day)
+      parameters:
+        - $ref: "#/components/parameters/DateFilter"
+      responses:
+        "200":
+          description: Exercise log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ExerciseLog" }
+
+  /api/activities/exercises/{logId}:
+    delete:
+      tags: [activities]
+      summary: Delete an exercise log entry
+      parameters:
+        - $ref: "#/components/parameters/LogId"
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Exercise not found
+
+  /api/user/goals:
+    put:
+      tags: [user]
+      summary: Update daily nutrition goals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                daily_calories: { type: number, default: 2000 }
+                daily_protein: { type: number, default: 150 }
+                daily_carbs: { type: number, default: 250 }
+                daily_fats: { type: number, default: 65 }
+      responses:
+        "200":
+          description: Goals updated
+
+  /api/user/profile:
+    put:
+      tags: [user]
+      summary: Update profile fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                age: { type: number }
+                height_cm: { type: number }
+                current_weight_kg: { type: number }
+                target_weight_kg: { type: number }
+                goal_type: { type: string }
+                weekly_pace_kg: { type: number }
+                diet_type: { type: string }
+                onboarding_completed: { type: boolean }
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPayload" }
+
+  /api/user/onboarding:
+    put:
+      tags: [user]
+      summary: Complete onboarding and compute initial daily goals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                [goal_type, diet_type, age, height_cm, current_weight_kg, target_weight_kg, weekly_pace_kg]
+              properties:
+                goal_type: { type: string, enum: [lose, maintain, gain] }
+                diet_type: { type: string, minLength: 2, maxLength: 32 }
+                age: { type: number, minimum: 13, maximum: 100 }
+                height_cm: { type: number, minimum: 100, maximum: 250 }
+                current_weight_kg: { type: number, minimum: 30, maximum: 300 }
+                target_weight_kg: { type: number, minimum: 30, maximum: 300 }
+                weekly_pace_kg: { type: number, minimum: 0.1, maximum: 1.5 }
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPayload" }
+
+  /api/analytics/weekly:
+    get:
+      tags: [analytics]
+      summary: Last 7 days of aggregated nutrition totals by day
+      description: >
+        Response includes a metadata.request_id / generated_at block (Art.
+        12.1) so a given response can be correlated back to a specific
+        request in server-side logs.
+      responses:
+        "200":
+          description: Weekly analytics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyticsSeries" }
+
+  /api/analytics/monthly:
+    get:
+      tags: [analytics]
+      summary: Last 30 days of aggregated nutrition totals by day
+      responses:
+        "200":
+          description: Monthly analytics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyticsSeries" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    DateFilter:
+      name: date
+      in: query
+      required: false
+      schema: { type: string, format: date }
+      description: "ISO date (YYYY-MM-DD); defaults to today (UTC day boundaries)"
+    MealId:
+      name: mealId
+      in: path
+      required: true
+      schema: { type: string }
+    LogId:
+      name: logId
+      in: path
+      required: true
+      schema: { type: string }
+
+  schemas:
+    UserPayload:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        role: { type: string }
+        daily_calories: { type: integer }
+        daily_protein: { type: integer }
+        daily_carbs: { type: integer }
+        daily_fats: { type: integer }
+        onboarding_completed: { type: boolean }
+        token: { type: string, description: "JWT access token (present on register/login)" }
+
+    MealAnalysis:
+      type: object
+      properties:
+        food_name: { type: string }
+        calories: { type: number }
+        protein: { type: number }
+        carbs: { type: number }
+        fats: { type: number }
+        fiber: { type: number }
+        health_score: { type: integer }
+        quantity_grams: { type: number }
+        ingredients: { type: array, items: { type: string } }
+        meal_description: { type: string }
+        meal_type: { type: string }
+        confidence: { type: number, nullable: true }
+        needs_review: { type: boolean }
+        flag_reasons: { type: array, items: { type: string } }
+        ai_disclosure: { type: object }
+
+    MealSaveRequest:
+      type: object
+      required: [food_name, calories, protein, carbs, fats]
+      properties:
+        food_name: { type: string }
+        calories: { type: number }
+        protein: { type: number }
+        carbs: { type: number }
+        fats: { type: number }
+        fiber: { type: number, default: 0 }
+        health_score: { type: number, default: 5 }
+        ingredients: { type: array, items: { type: string } }
+        meal_description: { type: string }
+        meal_type: { type: string, default: snack }
+        quantity_grams: { type: number, default: 100 }
+        image_base64: { type: string }
+        logged_at: { type: string, format: date-time }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+
+    Meal:
+      type: object
+      properties:
+        id: { type: string }
+        food_name: { type: string }
+        calories: { type: number }
+        protein: { type: number }
+        carbs: { type: number }
+        fats: { type: number }
+        fiber: { type: number }
+        health_score: { type: integer }
+        quantity_grams: { type: number }
+        meal_type: { type: string }
+        meal_description: { type: string }
+        ingredients: { type: array, items: { type: string } }
+        image_base64:
+          type: string
+          nullable: true
+          description: Detail view only — never present on list-endpoint items.
+        logged_at: { type: string, format: date-time }
+        confidence: { type: number, nullable: true }
+        needs_review: { type: boolean }
+
+    MealListItem:
+      type: object
+      description: >
+        Meal minus image_base64. GET /api/meals is a list view and doesn't
+        return every meal's full-resolution photo inline — fetch
+        GET /api/meals/{mealId} for the image.
+      properties:
+        id: { type: string }
+        food_name: { type: string }
+        calories: { type: number }
+        protein: { type: number }
+        carbs: { type: number }
+        fats: { type: number }
+        fiber: { type: number }
+        health_score: { type: integer }
+        quantity_grams: { type: number }
+        meal_type: { type: string }
+        meal_description: { type: string }
+        ingredients: { type: array, items: { type: string } }
+        logged_at: { type: string, format: date-time }
+        confidence: { type: number, nullable: true }
+        needs_review: { type: boolean }
+
+    MealsListResponse:
+      type: object
+      properties:
+        meals:
+          type: array
+          items: { $ref: "#/components/schemas/MealListItem" }
+        data_quality:
+          type: object
+          description: Art. 10.1 data quality signal for this page of meals
+          properties:
+            source: { type: string }
+            method: { type: string }
+            accuracy_metrics:
+              $ref: "#/components/schemas/AccuracyMetrics"
+            flagged_meal_count: { type: integer }
+            training_data_provenance:
+              type: object
+              description: >
+                Art. 10.1. States explicitly that this system has no
+                in-house training/validation/testing dataset to report
+                quality/representativeness/validation metrics on — the
+                underlying model is a third-party foundation model.
+              properties:
+                own_training_data: { type: boolean, example: false }
+                model_provider: { type: string }
+                model_name: { type: string }
+                statement: { type: string }
+                data_governance_doc: { type: string }
+            disclaimer: { type: string }
+        metadata:
+          type: object
+          properties:
+            request_id: { type: string }
+            generated_at: { type: string, format: date-time }
+
+    TodaySummary:
+      type: object
+      properties:
+        total_calories: { type: number }
+        total_protein: { type: number }
+        total_carbs: { type: number }
+        total_fats: { type: number }
+        meal_count: { type: integer }
+        goal_calories: { type: integer }
+        goal_protein: { type: integer }
+        goal_carbs: { type: integer }
+        goal_fats: { type: integer }
+        metadata:
+          type: object
+          properties:
+            request_id: { type: string }
+            generated_at: { type: string, format: date-time }
+        data_quality:
+          type: object
+          description: Art. 10.1 data quality signal for this aggregate
+          properties:
+            source: { type: string }
+            method: { type: string }
+            confidence_level: { type: string }
+            flagged_meal_count: { type: integer }
+            flagged_meal_ids: { type: array, items: { type: string } }
+            accuracy_metrics:
+              $ref: "#/components/schemas/AccuracyMetrics"
+            disclaimer: { type: string }
+        instructions_for_use:
+          type: object
+          description: Art. 13.1 transparency block
+          properties:
+            intended_use: { type: string }
+            how_to_interpret: { type: array, items: { type: string } }
+            human_oversight: { type: string }
+            instructions_doc: { type: string }
+
+    WaterLog:
+      type: object
+      properties:
+        id: { type: string }
+        amount_ml: { type: number }
+        logged_at: { type: string, format: date-time }
+        needs_review: { type: boolean }
+        type: { type: string, enum: [water] }
+
+    ExerciseLog:
+      type: object
+      properties:
+        id: { type: string }
+        exercise_name: { type: string }
+        duration_minutes: { type: number }
+        calories_burned: { type: number }
+        logged_at: { type: string, format: date-time }
+        needs_review: { type: boolean }
+        type: { type: string, enum: [exercise] }
+
+    AnalyticsSeries:
+      type: object
+      properties:
+        period: { type: string, enum: [weekly, monthly] }
+        days:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              day_label: { type: string }
+              calories: { type: number }
+              protein: { type: number }
+              carbs: { type: number }
+              fats: { type: number }
+              meal_count: { type: integer }
+              flagged_meal_count:
+                type: integer
+                description: >
+                  Art. 15.1 / present on the weekly endpoint. How many of
+                  this day's meals failed a plausibility check.
+              accuracy_metrics:
+                $ref: "#/components/schemas/AccuracyMetrics"
+        metadata:
+          type: object
+          description: >
+            Art. 12.1 request correlation data. Currently only populated on
+            GET /api/analytics/weekly.
+          properties:
+            request_id: { type: string }
+            generated_at: { type: string, format: date-time }
+        data_quality:
+          type: object
+          description: >
+            Art. 15.1 accuracy signal, week-wide (currently only populated
+            on GET /api/analytics/weekly). See AccuracyMetrics.basis for
+            what accuracy_metrics does and doesn't represent.
+          properties:
+            source: { type: string }
+            method: { type: string }
+            accuracy_metrics:
+              $ref: "#/components/schemas/AccuracyMetrics"
+            flagged_meal_count: { type: integer }
+            disclaimer: { type: string }
+
+    AccuracyMetrics:
+      type: object
+      description: >
+        Art. 15.1 formal accuracy metrics, computed from each contributing
+        meal's AI self-reported confidence score — not an error rate
+        measured against a lab-verified ground truth. Shared shape used by
+        GET /api/meals/today-summary and GET /api/analytics/weekly.
+      properties:
+        metric: { type: string, example: mean_model_reported_confidence }
+        avg_confidence: { type: number, nullable: true }
+        min_confidence: { type: number, nullable: true }
+        confidence_threshold: { type: number }
+        meals_below_confidence_threshold: { type: integer }
+        meals_scored: { type: integer }
+        meals_missing_confidence: { type: integer }
+        basis: { type: string }

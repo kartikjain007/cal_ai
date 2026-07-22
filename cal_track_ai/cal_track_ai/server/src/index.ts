@@ -9,6 +9,7 @@ import { registerMealRoutes } from "./routes/meals";
 import { registerAnalyticsRoutes } from "./routes/analytics";
 import { registerUserRoutes } from "./routes/user";
 import { registerActivitiesRoutes } from "./routes/activities";
+import { registerAdminRoutes } from "./routes/admin";
 
 declare global {
   namespace Express {
@@ -59,6 +60,7 @@ registerMealRoutes(app);
 registerAnalyticsRoutes(app);
 registerUserRoutes(app);
 registerActivitiesRoutes(app);
+registerAdminRoutes(app);
 
 async function main() {
   await connectDatabase();

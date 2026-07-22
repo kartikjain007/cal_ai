@@ -3,25 +3,21 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'rea
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { AuthProvider } from '../src/context/AuthContext';
 import { ProcessingProvider, useProcessing } from '../src/context/ProcessingContext';
 import { Colors } from '../src/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 
 function ProcessingToast() {
-  const { isProcessing, result, error, dismissError, saveMealAuto, isSavingAuto } = useProcessing();
-  const { user } = useAuth();
+  const { isProcessing, result, error, dismissError, isSavingAuto } = useProcessing();
   const router = useRouter();
 
-  const handleSaveResult = async () => {
-    try {
-      if (user?.token) {
-        await saveMealAuto(user.token);
-        router.replace('/(tabs)/home');
-      }
-    } catch (e) {
-      console.error('Error saving meal:', e);
-    }
+  // A ready `result` always needs a human decision before it's saved — it
+  // either failed a plausibility check (Art. 14(2) review gate) or a prior
+  // auto-save attempt errored and needs a retry. Route to the review screen
+  // rather than saving it directly from the toast.
+  const handleViewResult = () => {
+    router.push('/meal-result');
   };
 
   if (!isProcessing && !result && !error) return null;
@@ -54,7 +50,7 @@ function ProcessingToast() {
   if (result) {
     return (
       <View style={styles.toastContainer}>
-        <TouchableOpacity testID="view-result-toast" style={[styles.toast, styles.toastSuccess]} onPress={handleSaveResult} disabled={isSavingAuto}>
+        <TouchableOpacity testID="view-result-toast" style={[styles.toast, styles.toastSuccess]} onPress={handleViewResult} disabled={isSavingAuto}>
           {isSavingAuto ? (
             <>
               <ActivityIndicator size="small" color={Colors.success} />
@@ -63,7 +59,7 @@ function ProcessingToast() {
           ) : (
             <>
               <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-              <Text style={styles.toastText}>Analysis ready! Tap to save</Text>
+              <Text style={styles.toastText}>Analysis ready! Tap to review</Text>
               <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
             </>
           )}
