@@ -262,6 +262,47 @@ correlatable audit trail — sufficient to reconstruct, for a disputed total
 or a support request, which request produced a given response and whether
 it involved a data-quality flag.
 
+### Durable log storage & retention (Art. 12.2)
+
+`logger.*` (`server/src/utils/config.ts`) writes to console/stdout only —
+in most hosting environments (including this app's target, Vercel
+serverless) that output is not durable and isn't queryable after the
+process that wrote it exits. Article 12.2 requires the events above to
+remain traceable by request ID for a retention period, which console
+output alone cannot satisfy.
+
+`server/src/utils/eventLog.ts`'s `logEvent()` is the durable counterpart:
+it writes the same console line `logger.*` always has, and additionally
+persists a row to the `log_events` table (`LogEvent` model,
+`server/prisma/schema.prisma`) with `event`, `level`, `request_id`,
+`user_id`, `message`, `metadata` (JSON), and `created_at`. It is the
+mechanism behind all five flagged/traceability events named above:
+`meal_estimate_flagged`, `meal_save_flagged`,
+`water_log_daily_total_anomaly`, `exercise_log_flagged`, and
+`today_summary_includes_flagged_meals`. Because `log_events.request_id` is
+indexed and populated with the same UUID assigned to `req.requestId` and
+echoed as the `X-Request-Id` response header, any of these entries is
+retrievable with a single query:
+
+```sql
+SELECT * FROM log_events WHERE request_id = $1 ORDER BY created_at;
+```
+
+Persistence is best-effort with respect to the request it describes — a
+`log_events` write failure is caught and logged via `logger.error`, but
+never fails or blocks the request itself (see `logEvent()`).
+
+**Retention**: rows are retained for a minimum of 6 calendar months
+(`LOG_RETENTION_DAYS = 186` in `eventLog.ts` — 6 × 31 days, so a row is
+never pruned before a full 6 months regardless of month length). A daily
+Vercel Cron job (`vercel.json` → `GET /api/admin/logs/prune`, `server/src/routes/admin.ts`,
+`pruneLogs`) deletes rows older than the retention window via
+`pruneExpiredLogEvents()`. The cron request authenticates with
+`Authorization: Bearer $CRON_SECRET` (Vercel sets this header
+automatically for cron-triggered requests when the `CRON_SECRET` env var
+is configured); the same endpoint also accepts a logged-in admin session
+for an on-demand manual prune.
+
 ## Human oversight controls (Art. 14(2))
 
 Three distinct oversight mechanisms give a human the ability to intervene in

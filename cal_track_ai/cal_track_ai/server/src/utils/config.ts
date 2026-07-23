@@ -8,6 +8,11 @@ export const config = {
   jwtAlgorithm: "HS256",
   geminiApiKey: process.env.GEMINI_API_KEY,
   geminiModel: process.env.GEMINI_MODEL,
+  // Authenticates the scheduled log-retention prune job (vercel.json
+  // "crons"). Vercel automatically sends `Authorization: Bearer
+  // $CRON_SECRET` on cron-triggered requests when this env var is set —
+  // see routes/admin.ts, pruneLogs.
+  cronSecret: process.env.CRON_SECRET,
 };
 
 export const logger = {

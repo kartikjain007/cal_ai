@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import { prisma } from "../utils/prisma";
 import { authMiddleware, requireAdmin } from "../middleware/auth";
-import { logger } from "../utils/config";
+import { config, logger } from "../utils/config";
 import { getAiAnalysisStatus, setAiAnalysisEnabled } from "../utils/systemSettings";
+import { pruneExpiredLogEvents, LOG_RETENTION_DAYS } from "../utils/eventLog";
 
 // Human-oversight endpoints (Art. 14(2)): a kill-switch to stop the AI
 // meal-analysis pipeline, and a review queue so a person can inspect and
@@ -192,9 +193,29 @@ export async function decideReviewItem(req: Request, res: Response) {
   return res.json({ message: "Review recorded", entity_type: entityType, id: String(entityId), decision });
 }
 
+// Art. 12.2 log retention: deletes log_events rows past LOG_RETENTION_DAYS.
+// Triggered by the daily Vercel Cron job (vercel.json), which authenticates
+// via `Authorization: Bearer $CRON_SECRET` rather than a user session — a
+// cron invocation has no logged-in admin to check against. Also reachable
+// by an authenticated admin for a manual/on-demand prune.
+export async function pruneLogs(req: Request, res: Response) {
+  const authHeader = req.headers.authorization;
+  const isCron = !!config.cronSecret && authHeader === `Bearer ${config.cronSecret}`;
+  const isAdmin = req.user?.role === "admin";
+  if (!isCron && !isAdmin) {
+    return res.status(401).json({ detail: "Not authenticated" });
+  }
+
+  const result = await pruneExpiredLogEvents();
+  logger.info(`log_events_pruned count=${result.count} retention_days=${LOG_RETENTION_DAYS}`);
+
+  return res.json({ pruned: result.count, retention_days: LOG_RETENTION_DAYS });
+}
+
 export function registerAdminRoutes(app: import("express").Express) {
   app.get("/api/admin/oversight/status", authMiddleware, requireAdmin, getOversightStatus);
   app.post("/api/admin/oversight/status", authMiddleware, requireAdmin, setOversightStatus);
   app.get("/api/admin/review-queue", authMiddleware, requireAdmin, getReviewQueue);
   app.post("/api/admin/review-queue/:entityType/:id/decision", authMiddleware, requireAdmin, decideReviewItem);
+  app.get("/api/admin/logs/prune", pruneLogs);
 }

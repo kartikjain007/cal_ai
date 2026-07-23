@@ -10,6 +10,7 @@ import {
 } from "../utils/validation";
 import { authMiddleware } from "../middleware/auth";
 import { config, logger } from "../utils/config";
+import { logEvent } from "../utils/eventLog";
 import { getAiAnalysisStatus } from "../utils/systemSettings";
 
 export async function analyzeMeal(req: Request, res: Response) {
@@ -17,6 +18,8 @@ export async function analyzeMeal(req: Request, res: Response) {
   if (!parseResult.success) {
     return res.status(400).json({ detail: parseResult.error.errors });
   }
+
+  const requestId = req.requestId ?? randomUUID();
 
   // Human-oversight kill-switch (Art. 14(2)): lets an admin stop the AI
   // meal-analysis pipeline (e.g. mid-incident) without a deploy. Checked
@@ -158,7 +161,14 @@ Always explain the health_score in health_score_rationale.`;
         confidence,
       });
       if (quality.needsReview) {
-        logger.warn(`meal_estimate_flagged reasons=${quality.reasons.join(",")}`);
+        await logEvent({
+          event: "meal_estimate_flagged",
+          level: "warn",
+          requestId,
+          userId: req.user?.id,
+          message: `meal_estimate_flagged request_id=${requestId} user_id=${req.user?.id} reasons=${quality.reasons.join(",")}`,
+          metadata: { reasons: quality.reasons },
+        });
       }
 
       return res.json({
@@ -242,9 +252,14 @@ export async function getTodaySummary(req: Request, res: Response) {
   const generatedAt = new Date().toISOString();
 
   if (flaggedMeals.length > 0) {
-    logger.warn(
-      `today_summary_includes_flagged_meals request_id=${requestId} user_id=${userId} flagged_count=${flaggedMeals.length} total_meals=${meals.length}`
-    );
+    await logEvent({
+      event: "today_summary_includes_flagged_meals",
+      level: "warn",
+      requestId,
+      userId,
+      message: `today_summary_includes_flagged_meals request_id=${requestId} user_id=${userId} flagged_count=${flaggedMeals.length} total_meals=${meals.length}`,
+      metadata: { flagged_count: flaggedMeals.length, total_meals: meals.length },
+    });
   }
 
   // Formal accuracy metrics (Art. 15.1) — computed from each contributing
@@ -301,6 +316,7 @@ export async function saveMeal(req: Request, res: Response) {
 
   const userId = req.user!.id;
   const data = parseResult.data;
+  const requestId = req.requestId ?? randomUUID();
 
   const loggedAt = data.logged_at ? new Date(data.logged_at) : new Date();
 
@@ -314,7 +330,14 @@ export async function saveMeal(req: Request, res: Response) {
     confidence: data.confidence,
   });
   if (quality.needsReview) {
-    logger.warn(`meal_save_flagged reasons=${quality.reasons.join(",")}`);
+    await logEvent({
+      event: "meal_save_flagged",
+      level: "warn",
+      requestId,
+      userId,
+      message: `meal_save_flagged request_id=${requestId} user_id=${userId} reasons=${quality.reasons.join(",")}`,
+      metadata: { reasons: quality.reasons },
+    });
   }
 
   const meal = await prisma.meal.create({

@@ -12,5 +12,11 @@
       "src": "/(.*)",
       "dest": "src/index.ts"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/admin/logs/prune",
+      "schedule": "0 3 * * *"
+    }
   ]
 }

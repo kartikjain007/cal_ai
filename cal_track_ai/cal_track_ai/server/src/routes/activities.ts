@@ -10,6 +10,7 @@ import {
   MAX_DAILY_EXERCISE_MINUTES,
 } from "../utils/validation";
 import { logger } from "../utils/config";
+import { logEvent } from "../utils/eventLog";
 
 export async function saveWater(req: Request, res: Response) {
   const parseResult = waterLogSchema.safeParse(req.body);
@@ -17,9 +18,10 @@ export async function saveWater(req: Request, res: Response) {
     return res.status(400).json({ detail: parseResult.error.errors });
   }
 
-  
+
 
   const userId = req.user!.id;
+  const requestId = req.requestId ?? randomUUID();
   const { amount_ml, logged_at } = parseResult.data;
 
   const loggedAt = logged_at ? new Date(logged_at) : new Date();
@@ -36,7 +38,14 @@ const dailyTotal = await prisma.waterLog.aggregate({
 const projectedTotal = (dailyTotal._sum.amountMl ?? 0) + amount_ml;
 
 if (projectedTotal > MAX_DAILY_WATER_ML) {
-  logger.warn("water_log_daily_total_anomaly", { userId, projectedTotal });
+  await logEvent({
+    event: "water_log_daily_total_anomaly",
+    level: "warn",
+    requestId,
+    userId,
+    message: `water_log_daily_total_anomaly request_id=${requestId} user_id=${userId} projected_total=${projectedTotal}`,
+    metadata: { projectedTotal },
+  });
   // still store the entry (don't silently drop user data), but mark it
   // for the same review flag pattern used on meal estimates
 }
@@ -156,11 +165,15 @@ export async function saveExercise(req: Request, res: Response) {
 
   const flaggedForReview = rateCheck.needsReview || dailyAnomaly;
   if (flaggedForReview) {
-    logger.warn(
-      `exercise_log_flagged request_id=${requestId} user_id=${userId} reasons=${rateCheck.reasons.join(",")}${
-        dailyAnomaly ? `,daily_duration_anomaly:${projectedDurationTotal}` : ""
-      }`
-    );
+    const reasons = [...rateCheck.reasons, ...(dailyAnomaly ? [`daily_duration_anomaly:${projectedDurationTotal}`] : [])];
+    await logEvent({
+      event: "exercise_log_flagged",
+      level: "warn",
+      requestId,
+      userId,
+      message: `exercise_log_flagged request_id=${requestId} user_id=${userId} reasons=${reasons.join(",")}`,
+      metadata: { reasons },
+    });
   }
 
   const exercise = await prisma.exercise.create({

@@ -133,5 +133,29 @@ model Exercise {
   @@map("exercises")
 }
 
+// Durable counterpart to the console-only `logger` in utils/config.ts
+// (Art. 12.2 — traceability/log retention). Every flagged-quality event
+// (meal_estimate_flagged, meal_save_flagged, water_log_daily_total_anomaly,
+// exercise_log_flagged, today_summary_includes_flagged_meals) is written
+// here via utils/eventLog.ts's logEvent(), tagged with the same request_id
+// echoed on the response as X-Request-Id, so it survives past the
+// request/process lifetime and is retrievable by request ID. Rows older
+// than LOG_RETENTION_DAYS (utils/eventLog.ts) are purged by the scheduled
+// prune job, giving a bounded 6-month retention window.
+model LogEvent {
+  id        Int      @id @default(autoincrement())
+  event     String
+  level     String   @default("info")
+  requestId String?  @map("request_id")
+  userId    Int?     @map("user_id")
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([requestId])
+  @@index([event])
+  @@index([createdAt])
+  @@map("log_events")
+}
 
 
